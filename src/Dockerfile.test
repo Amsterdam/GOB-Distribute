@@ -1,0 +1,25 @@
+FROM amsterdam/python:3.7-buster
+MAINTAINER datapunt@amsterdam.nl
+
+# Install gobdistribute in /app folder
+WORKDIR /app
+
+# Install required Python packages
+COPY requirements.txt /app/
+RUN pip3 install --no-cache-dir -r requirements.txt
+RUN rm requirements.txt
+
+# Copy gobdistribute module
+COPY gobdistribute gobdistribute
+
+# Remove gobcore/gobconfig tests (if present)
+RUN rm -rf /app/src/gobcore/tests
+RUN rm -rf /app/src/gobconfig/tests
+
+# Copy tests
+COPY tests tests
+COPY .flake8 .flake8
+COPY test.sh test.sh
+
+# Copy jenkins files
+COPY .jenkins /.jenkins
