@@ -15,7 +15,7 @@ class TestMain(TestCase):
             mocked_messagedriven_service.assert_called_with(__main__.SERVICEDEFINITION, "Distribute")
 
     @mock.patch('gobdistribute.__main__.distribute')
-    def test_main(self, mock_distribute):
+    def test_handle_distribute_msg(self, mock_distribute):
 
         msg = {
             "header": {
@@ -30,3 +30,32 @@ class TestMain(TestCase):
         mock_distribute.assert_called_with(
             catalogue="catalogue",
             collection="collection")
+
+    @mock.patch("gobdistribute.__main__.get_notification")
+    @mock.patch("gobdistribute.__main__.start_workflow")
+    def test_distribute_on_export_test(self, mock_start_workflow, mock_get_notification):
+        msg = mock.MagicMock()
+
+        mock_get_notification.return_value.contents = {
+            'catalogue': 'CAT',
+            'collection': 'COLL',
+            'product': 'PROD',
+        }
+        mock_get_notification.return_value.header = {
+            'process_id': 'PROCESS_ID'
+        }
+
+        __main__.distribute_on_export_test(msg)
+        mock_get_notification.assert_called_with(msg)
+
+        mock_start_workflow.assert_called_with(
+            {
+                'workflow_name': __main__.DISTRIBUTE
+            },
+            {
+                'catalogue': 'CAT',
+                'collection': 'COLL',
+                'product': 'PROD',
+                'process_id': 'PROCESS_ID'
+            }
+        )

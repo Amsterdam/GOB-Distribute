@@ -1,7 +1,8 @@
 from unittest import TestCase
 from unittest.mock import call, mock_open, patch, MagicMock
 
-from gobdistribute.distribute import distribute, _download_sources, _distribute_files, _get_file, _get_config
+from gobdistribute.distribute import distribute, _download_sources, _distribute_files, _get_file, _get_config, \
+    ObjectDatastore
 
 @patch('gobdistribute.distribute.logger', MagicMock())
 class TestDistribute(TestCase):
@@ -128,6 +129,7 @@ class TestDistribute(TestCase):
 
     @patch('gobdistribute.distribute.get_datastore_config')
     @patch('gobdistribute.distribute.DatastoreFactory.get_datastore')
+    @patch('gobdistribute.distribute.CONTAINER_BASE', "containerbase")
     def test_distribute_files(self, mock_get_datastore, mock_get_datastore_config):
         mock_config = {
             'destinations': [
@@ -148,12 +150,26 @@ class TestDistribute(TestCase):
         datastore = mock_get_datastore.return_value
 
         self.assertEqual([
-            call('file1', 'any location/file1'),
-            call('file2', 'any location/file2'),
+            call('file1', 'containerbase/any location/file1'),
+            call('file2', 'containerbase/any location/file2'),
             ],
             datastore.put_file.mock_calls,
             "The method was not called with the correct arguments."
         )
+
+        # When datastore is of type ObjectDatastore, don't add the base directory
+        mock_get_datastore.return_value = MagicMock(spec=ObjectDatastore)
+
+        _distribute_files(mock_config, mock_files)
+
+        self.assertEqual([
+            call('file1', 'any location/file1'),
+            call('file2', 'any location/file2'),
+        ],
+            mock_get_datastore.return_value.put_file.mock_calls,
+            "The method was not called with the correct arguments."
+        )
+
 
     @patch('gobdistribute.distribute.get_object')
     @patch('gobdistribute.distribute.get_full_container_list')
