@@ -8,8 +8,8 @@ from objectstore.objectstore import get_full_container_list, get_object
 
 from gobconfig.datastore.config import get_datastore_config
 
-from gobcore.datastore.datastore import OBJECTSTORE
 from gobcore.datastore.factory import DatastoreFactory
+from gobcore.datastore.objectstore import ObjectDatastore
 from gobcore.logging.logger import logger
 
 from gobdistribute.config import CONTAINER_BASE, GOB_OBJECTSTORE
@@ -97,19 +97,16 @@ def _distribute_files(config, files):
         logger.info(f"Connect to Destination {destination['name']}")
 
         datastore_config = get_datastore_config(destination['name'])
-
-        # Set extra kwargs for objectstore put_file functionality
-        datastore_kwargs = {
-            'container_name': os.getenv("CONTAINER_BASE", "acceptatie")
-        } if datastore_config.get('type') == OBJECTSTORE else {}
-
         datastore = DatastoreFactory.get_datastore(datastore_config)
         datastore.connect()
+
+        # Prepend main directory to file, except for ObjectDatastore, as this will use a container by default
+        base_directory = f"{CONTAINER_BASE}/" if not isinstance(datastore, ObjectDatastore) else ""
 
         logger.info(f"Distribute {len(files)} files to Destination {destination['name']}")
         for file in files:
             base = os.path.basename(file)
-            datastore.put_file(file, f"{destination['location']}/{base}", **datastore_kwargs)
+            datastore.put_file(file, f"{base_directory}{destination['location']}/{base}")
             logger.info(f"{base} distributed to {destination['name']}")
 
 
