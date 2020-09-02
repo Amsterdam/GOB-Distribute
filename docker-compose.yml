@@ -8,6 +8,7 @@ services:
     environment:
       MESSAGE_BROKER_ADDRESS: rabbitmq
       API_HOST: http://gobapi:8001
+    env_file: .env
 
 networks:
   default:
