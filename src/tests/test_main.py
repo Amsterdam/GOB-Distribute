@@ -20,7 +20,7 @@ class TestMain(TestCase):
         msg = {
             "header": {
                 "catalogue": "catalogue",
-                "collection": "collection"
+                "fileset": "fileset"
             },
             "any other arg": "any other arg",
         }
@@ -29,7 +29,7 @@ class TestMain(TestCase):
         
         mock_distribute.assert_called_with(
             catalogue="catalogue",
-            collection="collection")
+            fileset="fileset")
 
     @mock.patch("gobdistribute.__main__.get_notification")
     @mock.patch("gobdistribute.__main__.start_workflow")
@@ -38,8 +38,6 @@ class TestMain(TestCase):
 
         mock_get_notification.return_value.contents = {
             'catalogue': 'CAT',
-            'collection': 'COLL',
-            'product': 'PROD',
         }
         mock_get_notification.return_value.header = {
             'process_id': 'PROCESS_ID'
@@ -54,8 +52,6 @@ class TestMain(TestCase):
             },
             {
                 'catalogue': 'CAT',
-                'collection': 'COLL',
-                'product': 'PROD',
                 'process_id': 'PROCESS_ID'
             }
         )
