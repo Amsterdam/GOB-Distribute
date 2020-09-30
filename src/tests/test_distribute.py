@@ -17,12 +17,11 @@ class TestDistribute(TestCase):
     @patch('gobdistribute.distribute.tempfile.gettempdir', lambda: 'any dir')
     def test_distribute(self, mock_distribute_files, mock_download_sources, mock_get_config, mock_get_datastore, mock_get_datastore_config):
         catalogue = 'any catalogue'
-        collection = 'any collection'
-        product = 'any product'
+        fileset = 'some fileset'
 
         mock_distribute_config = {
             'any product': 'any config',
-            'another product': 'another config'
+            'some fileset': 'another config'
         }
         mock_get_config.return_value = mock_distribute_config
 
@@ -40,8 +39,8 @@ class TestDistribute(TestCase):
         mock_get_config.assert_called_with(conn_info, catalogue)
 
         self.assertEqual([
-            call(conn_info, 'any dir/any product', 'any config', None),
-            call(conn_info, 'any dir/another product', 'another config', None),
+            call(conn_info, 'any dir/any product', 'any config'),
+            call(conn_info, 'any dir/some fileset', 'another config'),
             ],
             mock_download_sources.mock_calls,
             "The method was not called with the correct arguments."
@@ -56,76 +55,43 @@ class TestDistribute(TestCase):
         )
 
         mock_download_sources.reset_mock()
-        distribute(catalogue, collection)
+        distribute(catalogue, fileset)
 
         self.assertEqual([
-            call(conn_info, 'any dir/any product', 'any config', 'any collection'),
-            call(conn_info, 'any dir/another product', 'another config', 'any collection'),
+            call(conn_info, 'any dir/some fileset', 'another config'),
             ],
             mock_download_sources.mock_calls,
             "The method was not called with the correct arguments."
         )
         
         mock_download_sources.reset_mock()
-        distribute(catalogue, collection, product)
-
-        self.assertEqual([
-            call(conn_info, 'any dir/any product', 'any config', 'any collection'),
-            ],
-            mock_download_sources.mock_calls,
-            "The method was not called with the correct arguments."
-        )
 
     @patch('gobdistribute.distribute._get_file')
     def test_download_sources(self, mock_get_file):
         mock_config = {
-            'source': {
-                'location': 'any location',
-                'collections': {
-                    'any collection': {
-                        'file_name': 'any filename'
-                    },
-                    'another collection': {
-                        'file_name': 'another filename'
-                    }
-                }
-            }
+            'sources': [
+                {'file_name': 'some/dir/any filename'},
+                {'file_name': 'some/other/dir/another filename'},
+            ]
         }
         
         mock_get_file.side_effect = [('any file info', 'any file'), ('another file info', 'another file')]
         
-        with patch("builtins.open", mock_open()) as mock_file:
-            _download_sources('any connection', 'any directory', mock_config, collection=None)
+        with patch("builtins.open") as mock_open:
+            _download_sources('any connection', 'any directory', mock_config)
 
             self.assertEqual([
-                call('any connection', 'any location/any filename'),
-                call('any connection', 'any location/another filename'),
+                call('any connection', 'some/dir/any filename'),
+                call('any connection', 'some/other/dir/another filename'),
                 ],
                 mock_get_file.mock_calls,
                 "The method was not called with the correct arguments."
             )
 
-        handle = mock_file()
-        self.assertEqual([
-            call('any file'),
-            call('another file'),
-            ],
-            handle.write.mock_calls,
-            "The method was not called with the correct arguments."
-        )
-
-        mock_get_file.reset_mock()
-        mock_get_file.side_effect = [('any file info', 'any file')]
-
-        with patch("builtins.open", mock_open()) as mock_file:
-            _download_sources('any connection', 'any directory', mock_config, collection='another collection')
-
-            self.assertEqual([
-                call('any connection', 'any location/another filename'),
-                ],
-                mock_get_file.mock_calls,
-                "The method was not called with the correct arguments."
-            )
+        mock_open.assert_has_calls([
+            call('any directory/any filename', 'wb'),
+            call('any directory/another filename', 'wb'),
+        ], True)
 
     @patch('gobdistribute.distribute.get_datastore_config')
     @patch('gobdistribute.distribute.DatastoreFactory.get_datastore')

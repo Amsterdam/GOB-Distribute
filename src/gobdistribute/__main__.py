@@ -11,7 +11,7 @@ def handle_distribute_msg(msg):
     header = msg['header']
     logger.configure(msg, "DISTRIBUTE")
 
-    distribute(catalogue=header['catalogue'], collection=header.get('collection'))
+    distribute(catalogue=header['catalogue'], fileset=header.get('fileset'))
 
     return {
         "header": msg.get("header"),
@@ -38,8 +38,6 @@ def distribute_on_export_test(msg):
     }
     arguments = {
         'catalogue': notification.contents.get('catalogue'),
-        'collection': notification.contents.get('collection'),
-        'product': notification.contents.get('product'),
         'process_id': notification.header.get('process_id'),
     }
     start_workflow(workflow, arguments)

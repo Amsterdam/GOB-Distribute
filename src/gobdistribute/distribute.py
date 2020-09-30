@@ -23,17 +23,16 @@ _REPLACEMENTS = {
 }
 
 
-def distribute(catalogue, collection=None, product=None):
+def distribute(catalogue, fileset=None):
     """
     Distribute export files for a given catalogue and optionally a collection
 
     :param catalogue: catalogue to distribute
-    :param collection: collection to distribute
+    :param fileset: the fileset to distribute
     :return: None
     """
     distribute_info = f"Distribute catalogue {catalogue}"
-    distribute_info += f" collection {collection}" if collection else ""
-    distribute_info += f" product {product}" if product else ""
+    distribute_info += f" fileset {fileset}" if fileset else ""
     logger.info(distribute_info)
 
     logger.info(f"Connect to Objectstore")
@@ -50,39 +49,33 @@ def distribute(catalogue, collection=None, product=None):
     }
 
     # Get distribute configuration for the given catalogue, if a product is provided select only that product
-    distribute_products = _get_config(conn_info, catalogue)
-    products = {product: distribute_products.get(product)} if product else distribute_products
+    distribute_filesets = _get_config(conn_info, catalogue)
+    filesets = {fileset: distribute_filesets.get(fileset)} if fileset else distribute_filesets
 
-    for product, config in products.items():
-        logger.info(f"Download product {product}")
-        temp_product_dir = os.path.join(tempfile.gettempdir(), product)
+    for fileset, config in filesets.items():
+        logger.info(f"Download fileset {fileset}")
+        temp_fileset_dir = os.path.join(tempfile.gettempdir(), fileset)
 
         # Create the path if the path not yet exists
-        path = Path(temp_product_dir)
+        path = Path(temp_fileset_dir)
         path.mkdir(exist_ok=True)
 
-        src_files = _download_sources(conn_info, temp_product_dir, config, collection)
+        src_files = _download_sources(conn_info, temp_fileset_dir, config)
 
         _distribute_files(config, src_files)
 
     return
 
 
-def _download_sources(conn_info, directory, config, collection=None):
+def _download_sources(conn_info, directory, config):
     src_files = []
 
-    src_config = config['source']
-
-    # Select the collection if provided or download all collections in the config
-    collections = [collection] if collection else src_config.get('collections').keys()
-    for collection in collections:
-        col_file_name = f"{src_config['collections'][collection]['file_name']}"
-
-        file_path = f"{src_config['location']}/{col_file_name}"
-        src_file_info, src_file = _get_file(conn_info, file_path)
+    for source in config.get('sources', []):
+        filename = source['file_name']
+        src_file_info, src_file = _get_file(conn_info, filename)
 
         # Store file in temporary directory
-        temp_file = os.path.join(directory, col_file_name)
+        temp_file = os.path.join(directory, os.path.basename(filename))
         with open(temp_file, "wb") as f:
             f.write(src_file)
         src_files.append(temp_file)
