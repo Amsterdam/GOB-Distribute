@@ -1,8 +1,11 @@
+import json
+
 from unittest import TestCase
 from unittest.mock import call, mock_open, patch, MagicMock
 
 from gobdistribute.distribute import distribute, _download_sources, _distribute_files, _get_file, _get_config, \
-    ObjectDatastore
+    ObjectDatastore, _get_filenames, _get_export_products
+
 
 @patch('gobdistribute.distribute.logger', MagicMock())
 class TestDistribute(TestCase):
@@ -39,8 +42,8 @@ class TestDistribute(TestCase):
         mock_get_config.assert_called_with(conn_info, catalogue)
 
         self.assertEqual([
-            call(conn_info, 'any dir/any product', 'any config'),
-            call(conn_info, 'any dir/some fileset', 'another config'),
+            call(conn_info, 'any dir/any product', 'any config', 'any catalogue'),
+            call(conn_info, 'any dir/some fileset', 'another config', 'any catalogue'),
             ],
             mock_download_sources.mock_calls,
             "The method was not called with the correct arguments."
@@ -58,7 +61,7 @@ class TestDistribute(TestCase):
         distribute(catalogue, fileset)
 
         self.assertEqual([
-            call(conn_info, 'any dir/some fileset', 'another config'),
+            call(conn_info, 'any dir/some fileset', 'another config', 'any catalogue'),
             ],
             mock_download_sources.mock_calls,
             "The method was not called with the correct arguments."
@@ -66,19 +69,92 @@ class TestDistribute(TestCase):
         
         mock_download_sources.reset_mock()
 
-    @patch('gobdistribute.distribute._get_file')
-    def test_download_sources(self, mock_get_file):
-        mock_config = {
+    @patch('gobdistribute.distribute.requests')
+    @patch('gobdistribute.distribute.EXPORT_API_HOST', 'http://exportapihost')
+    def test_get_export_products(self, mock_requests):
+        resp = {'a': 'b', 'c': {'d': 'e'}}
+        return_value = MagicMock()
+        return_value.text = json.dumps(resp)
+
+        mock_requests.get.return_value = return_value
+
+        self.assertEqual(resp, _get_export_products())
+        mock_requests.get.assert_called_with('http://exportapihost/products')
+        return_value.raise_for_status.assert_called_once()
+
+    @patch('gobdistribute.distribute._get_export_products')
+    def test_get_filenames(self, mock_get_export_products):
+        mock_get_export_products.return_value = {
+            'catalog1': {
+                'collection1': {
+                    'product1': [
+                        'file1.csv',
+                        'file2.shp',
+                    ],
+                    'product2': [
+                        'file3.dat',
+                    ],
+                },
+                'collection2': {
+                    'product3': [
+                        'file4.dat'
+                    ],
+                },
+                'collection3': {
+                    'product4': [
+                        'file5.csv',
+                        'file6.shp',
+                    ],
+                    'product5': [
+                        'file7.csv',
+                    ]
+                },
+            },
+        }
+
+        config = {
             'sources': [
-                {'file_name': 'some/dir/any filename'},
-                {'file_name': 'some/other/dir/another filename'},
+                {
+                    'file_name': 'some/filename.csv'
+                },
+                {
+                    'export': {
+                        'collection': 'collection1'
+                    }
+                },
+                {
+                    'export': {
+                        'collection': 'collection3',
+                        'products': [
+                            'product4'
+                        ]
+                    }
+                }
             ]
         }
-        
-        mock_get_file.side_effect = [('any file info', 'any file'), ('another file info', 'another file')]
+
+        self.assertEqual([
+            'some/filename.csv',
+            'catalog1/file1.csv',
+            'catalog1/file2.shp',
+            'catalog1/file3.dat',
+            'catalog1/file5.csv',
+            'catalog1/file6.shp',
+        ], _get_filenames(config, 'catalog1'))
+
+    @patch('gobdistribute.distribute._get_filenames')
+    @patch('gobdistribute.distribute._get_file')
+    def test_download_sources(self, mock_get_file, mock_get_filenames):
+        mock_get_filenames.return_value = ['some/dir/any filename', 'some/other/dir/another filename']
+        mock_config = MagicMock()
+
+        mock_get_file.side_effect = [
+            ({'name': 'any file'}, 'any file'),
+            ({'name': 'another file found with a different name'}, 'another file')
+        ]
         
         with patch("builtins.open") as mock_open:
-            _download_sources('any connection', 'any directory', mock_config)
+            _download_sources('any connection', 'any directory', mock_config, 'any catalogue')
 
             self.assertEqual([
                 call('any connection', 'some/dir/any filename'),
@@ -89,9 +165,11 @@ class TestDistribute(TestCase):
             )
 
         mock_open.assert_has_calls([
-            call('any directory/any filename', 'wb'),
-            call('any directory/another filename', 'wb'),
+            call('any directory/any file', 'wb'),
+            call('any directory/another file found with a different name', 'wb'),
         ], True)
+
+        mock_get_filenames.assert_called_with(mock_config, 'any catalogue')
 
     @patch('gobdistribute.distribute.get_datastore_config')
     @patch('gobdistribute.distribute.DatastoreFactory.get_datastore')

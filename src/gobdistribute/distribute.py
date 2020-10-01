@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import re
 import tempfile
+import requests
 
 from objectstore.objectstore import get_full_container_list, get_object
 
@@ -12,7 +13,7 @@ from gobcore.datastore.factory import DatastoreFactory
 from gobcore.datastore.objectstore import ObjectDatastore
 from gobcore.logging.logger import logger
 
-from gobdistribute.config import CONTAINER_BASE, GOB_OBJECTSTORE
+from gobdistribute.config import CONTAINER_BASE, GOB_OBJECTSTORE, EXPORT_API_HOST
 from gobdistribute.utils import json_loads
 
 
@@ -60,22 +61,63 @@ def distribute(catalogue, fileset=None):
         path = Path(temp_fileset_dir)
         path.mkdir(exist_ok=True)
 
-        src_files = _download_sources(conn_info, temp_fileset_dir, config)
+        src_files = _download_sources(conn_info, temp_fileset_dir, config, catalogue)
 
         _distribute_files(config, src_files)
 
     return
 
 
-def _download_sources(conn_info, directory, config):
-    src_files = []
+def _get_export_products():
+    """Retrieves the products overview from GOB-Export
+
+    :return:
+    """
+    r = requests.get(f'{EXPORT_API_HOST}/products')
+    r.raise_for_status()
+    return json.loads(r.text)
+
+
+def _get_filenames(config: dict, catalogue: str):
+    """Determines filenames to download for sources in config.
+
+    Source should have either 'file_name' or 'export' set. When source is 'file_name', this name is used. When source
+    is 'export', the filenames to download are derived from the export products definition.
+
+    :param config:
+    :param catalogue:
+    :return:
+    """
+    # Download exports product definition
+    export_products = _get_export_products().get(catalogue, {})
+    filenames = []
 
     for source in config.get('sources', []):
-        filename = source['file_name']
+        if source.get('file_name'):
+            filenames.append(source['file_name'])
+        elif source.get('export'):
+            collection_config = export_products.get(source['export']['collection'], {})
+
+            # If source['export']['products'] is defined, only take relevant products from collection_config.
+            # If no products are defined, take all products from collection_config
+            products = [collection_config.get(product, []) for product in source['export']['products']] \
+                if source['export'].get('products') \
+                else collection_config.values()
+
+            # Flatten the list of lists (products)
+            filenames += [f'{catalogue}/{item}' for product in products for item in product]
+
+    return filenames
+
+
+def _download_sources(conn_info, directory, config, catalogue):
+    src_files = []
+    for filename in _get_filenames(config, catalogue):
         src_file_info, src_file = _get_file(conn_info, filename)
 
-        # Store file in temporary directory
-        temp_file = os.path.join(directory, os.path.basename(filename))
+        # Store file in temporary directory. Use src_file_info['name'] as name, as the filename found can differ from
+        # the exact filename we were looking for.
+        temp_file = os.path.join(directory, os.path.basename(src_file_info['name']))
         with open(temp_file, "wb") as f:
             f.write(src_file)
         src_files.append(temp_file)
