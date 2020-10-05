@@ -5,11 +5,13 @@ import re
 import tempfile
 import requests
 
+from typing import List
+
 from objectstore.objectstore import get_full_container_list, get_object
 
 from gobconfig.datastore.config import get_datastore_config
 
-from gobcore.datastore.factory import DatastoreFactory
+from gobcore.datastore.factory import DatastoreFactory, Datastore
 from gobcore.datastore.objectstore import ObjectDatastore
 from gobcore.logging.logger import logger
 
@@ -38,9 +40,7 @@ def distribute(catalogue, fileset=None):
 
     logger.info(f"Connect to Objectstore")
 
-    config = get_datastore_config(GOB_OBJECTSTORE)
-    datastore = DatastoreFactory.get_datastore(config)
-    datastore.connect()
+    datastore, _ = _get_datastore(GOB_OBJECTSTORE)
     container_name = CONTAINER_BASE
 
     logger.info(f"Load files from {container_name}")
@@ -57,25 +57,35 @@ def distribute(catalogue, fileset=None):
         logger.info(f"Download fileset {fileset}")
         temp_fileset_dir = os.path.join(tempfile.gettempdir(), fileset)
 
-        # Create the path if the path not yet exists
-        path = Path(temp_fileset_dir)
-        path.mkdir(exist_ok=True)
+        filenames = _get_filenames(config, catalogue)
+        src_files = _download_sources(conn_info, temp_fileset_dir, filenames)
 
-        src_files = _download_sources(conn_info, temp_fileset_dir, config, catalogue)
+        for destination in config.get('destinations', []):
+            logger.info(f"Connect to Destination {destination['name']}")
+            datastore, base_directory = _get_datastore(destination['name'])
 
-        _distribute_files(config, src_files)
+            # Mapping is a list of tuples (local_file, destination_path)
+            mapping = [
+                (file, f"{base_directory}{destination['location']}/{os.path.basename(file)}") for file in src_files
+            ]
 
-    return
+            logger.info(f"Remove old files from Destination {destination['name']}")
+            _delete_old_files(datastore, destination['location'], mapping)
+
+            logger.info(f"Distribute {len(mapping)} files to Destination {destination['name']}")
+            _distribute_files(datastore, mapping)
+            logger.info(f"Done distributing files to {destination['name']}")
 
 
-def _get_export_products():
+def _get_export_products(catalogue: str):
     """Retrieves the products overview from GOB-Export
 
     :return:
     """
     r = requests.get(f'{EXPORT_API_HOST}/products')
     r.raise_for_status()
-    return json.loads(r.text)
+    data = json.loads(r.text)
+    return data.get(catalogue)
 
 
 def _get_filenames(config: dict, catalogue: str):
@@ -89,7 +99,7 @@ def _get_filenames(config: dict, catalogue: str):
     :return:
     """
     # Download exports product definition
-    export_products = _get_export_products().get(catalogue, {})
+    export_products = _get_export_products(catalogue)
     filenames = []
 
     for source in config.get('sources', []):
@@ -110,9 +120,13 @@ def _get_filenames(config: dict, catalogue: str):
     return filenames
 
 
-def _download_sources(conn_info, directory, config, catalogue):
+def _download_sources(conn_info, directory, filenames):
+    path = Path(directory)
+    path.mkdir(exist_ok=True)
+
     src_files = []
-    for filename in _get_filenames(config, catalogue):
+
+    for filename in filenames:
         src_file_info, src_file = _get_file(conn_info, filename)
 
         # Store file in temporary directory. Use src_file_info['name'] as name, as the filename found can differ from
@@ -127,42 +141,83 @@ def _download_sources(conn_info, directory, config, catalogue):
     return src_files
 
 
-def _distribute_files(config, files):
-    for destination in config.get('destinations'):
-        logger.info(f"Connect to Destination {destination['name']}")
+def _get_datastore(destination_name: str):
+    """Returns Datastore and base_directory for Datastore.
+    Returned Datastore has an initialised connection for destination_name
 
-        datastore_config = get_datastore_config(destination['name'])
-        datastore = DatastoreFactory.get_datastore(datastore_config)
-        datastore.connect()
+    :param destination_name:
+    :return:
+    """
+    datastore_config = get_datastore_config(destination_name)
+    datastore = DatastoreFactory.get_datastore(datastore_config)
+    datastore.connect()
 
-        # Prepend main directory to file, except for ObjectDatastore, as this will use a container by default
-        base_directory = f"{CONTAINER_BASE}/" if not isinstance(datastore, ObjectDatastore) else ""
+    # Prepend main directory to file, except for ObjectDatastore, as this will use a container by default
+    base_directory = f"{CONTAINER_BASE}/" if not isinstance(datastore, ObjectDatastore) else ""
+    return datastore, base_directory
 
-        logger.info(f"Distribute {len(files)} files to Destination {destination['name']}")
-        for file in files:
-            base = os.path.basename(file)
-            datastore.put_file(file, f"{base_directory}{destination['location']}/{base}")
-            logger.info(f"{base} distributed to {destination['name']}")
+
+def _apply_filename_replacements(filename: str):
+    """Applies filename replacements to filename, if filename contains any patterns defined in _REPLACEMENTS.
+
+    This is used to eliminate variables in filenames, such as timestamps.
+
+    :param filename:
+    :return:
+    """
+    for src, dst in _REPLACEMENTS.items():
+        filename = re.sub(dst, src, filename)
+    return filename
+
+
+def _delete_old_files(datastore: Datastore, location: str, filemapping: List[tuple]):
+    """Deletes all files present that match the destination filenames, taking into consideration the filename
+    replacements
+
+    :param datastore:
+    :param location:
+    :param filemapping:
+    :return:
+    """
+
+    if not datastore.can_list_file() or not datastore.can_delete_file():
+        logger.warning(f"Can not delete old files from Destination. Datastore does not support deletions.")
+        return
+
+    # Apply replacements to all dst filenames
+    dst_files = [_apply_filename_replacements(t[1]) for t in filemapping]
+
+    for f in datastore.list_files(location):
+        if _apply_filename_replacements(f) in dst_files:
+            datastore.delete_file(f)
+
+
+def _distribute_files(datastore: Datastore, mapping: List[tuple]):
+    """
+
+    :param datastore:
+    :param mapping:
+    :return:
+    """
+    for local_file, dst_path in mapping:
+        datastore.put_file(local_file, dst_path)
 
 
 def _get_file(conn_info, filename):
     """
     Get a file from Objectstore
+    Applies filename replacements, to find files with variables (such as timestamps) in their names.
 
     :param conn_info: Objectstore connection
     :param filename: name of the file to retrieve
     :return:
     """
-    # If the filename contains any replacement patterns, use the pattern to find the file
-    for src, dst in _REPLACEMENTS.items():
-        filename = re.sub(dst, src, filename)
+    filename = _apply_filename_replacements(filename)
 
     obj_info = None
     obj = None
     for item in get_full_container_list(conn_info['connection'], conn_info['container']):
-        item_name = item['name']
-        for src, dst in _REPLACEMENTS.items():
-            item_name = re.sub(dst, src, item_name)
+        item_name = _apply_filename_replacements(item['name'])
 
         if item_name == filename and (obj_info is None or item['last_modified'] > obj_info['last_modified']):
             # If multiple matches, match with the most recent item
