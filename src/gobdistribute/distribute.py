@@ -25,6 +25,8 @@ _REPLACEMENTS = {
     "{DATE}": r"\d{8}"
 }
 
+WILDCARD = "*"
+
 
 def distribute(catalogue, fileset=None):
     """
@@ -57,7 +59,7 @@ def distribute(catalogue, fileset=None):
         logger.info(f"Download fileset {fileset}")
         temp_fileset_dir = os.path.join(tempfile.gettempdir(), fileset)
 
-        filenames = _get_filenames(config, catalogue)
+        filenames = _get_filenames(conn_info, config, catalogue)
         src_files = _download_sources(conn_info, temp_fileset_dir, filenames)
 
         for destination in config.get('destinations', []):
@@ -88,7 +90,23 @@ def _get_export_products(catalogue: str):
     return data.get(catalogue)
 
 
-def _get_filenames(config: dict, catalogue: str):
+def _expand_filename_wildcard(conn_info: dict, filename: str):
+    """Returns all filenames from the given container that match filename, taking into consideration the wildcard
+    symbol.
+
+    :param conn_info:
+    :param filename:
+    :return:
+    """
+    result = []
+    match = filename.replace(WILDCARD, '.*')
+    for item in get_full_container_list(conn_info['connection'], conn_info['container']):
+        if re.match(match, item['name']):
+            result.append(item['name'])
+    return result
+
+
+def _get_filenames(conn_info: dict, config: dict, catalogue: str):
     """Determines filenames to download for sources in config.
 
     Source should have either 'file_name' or 'export' set. When source is 'file_name', this name is used. When source
@@ -104,7 +122,11 @@ def _get_filenames(config: dict, catalogue: str):
 
     for source in config.get('sources', []):
         if source.get('file_name'):
-            filenames.append(source['file_name'])
+            if WILDCARD in source['file_name']:
+                filenames.extend(_expand_filename_wildcard(conn_info, source['file_name']))
+            else:
+                filenames.append(source['file_name'])
+
         elif source.get('export'):
             collection_config = export_products.get(source['export']['collection'], {})
 
