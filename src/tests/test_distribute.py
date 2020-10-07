@@ -5,7 +5,7 @@ from unittest.mock import call, mock_open, patch, MagicMock
 
 from gobdistribute.distribute import distribute, _download_sources, _distribute_files, _get_file, _get_config, \
     ObjectDatastore, _get_filenames, _get_export_products, GOB_OBJECTSTORE, _get_datastore, \
-    _apply_filename_replacements, _delete_old_files
+    _apply_filename_replacements, _delete_old_files, _expand_filename_wildcard
 
 
 @patch('gobdistribute.distribute.logger', MagicMock())
@@ -72,8 +72,8 @@ class TestDistribute(TestCase):
 
         mock_get_config.assert_called_with(conn_info, catalogue)
         mock_get_filenames.assert_has_calls([
-            call(mock_get_config.return_value['fileset_a'], catalogue),
-            call(mock_get_config.return_value['fileset_b'], catalogue),
+            call(conn_info, mock_get_config.return_value['fileset_a'], catalogue),
+            call(conn_info, mock_get_config.return_value['fileset_b'], catalogue),
         ])
         mock_download_sources.assert_has_calls([
             call(conn_info, '/tmpdir/fileset_a', mock_get_filenames()),
@@ -93,7 +93,7 @@ class TestDistribute(TestCase):
         distribute(catalogue, fileset)
 
         mock_get_filenames.assert_has_calls([
-            call(mock_get_config.return_value['fileset_a'], catalogue),
+            call(conn_info, mock_get_config.return_value['fileset_a'], catalogue),
         ])
 
         mock_download_sources.assert_has_calls([
@@ -118,8 +118,49 @@ class TestDistribute(TestCase):
         mock_requests.get.assert_called_with('http://exportapihost/products')
         return_value.raise_for_status.assert_called_once()
 
+    @patch('gobdistribute.distribute.get_full_container_list')
+    def test_expand_filename_wildcard(self, mock_get_list):
+        conn_info = {'connection': 'CONNECTION', 'container': 'CONTAINER'}
+        mock_get_list.return_value = [
+            {'name': 'dir/a.csv'},
+            {'name': 'dir/b.csv'},
+            {'name': 'dir/a.shp'},
+            {'name': 'dir/b.shp'},
+            {'name': 'anotherdir/a.csv'},
+            {'name': 'anotherdir/b.shp'},
+        ]
+
+        self.assertEqual([
+            'dir/a.csv',
+            'dir/b.csv',
+        ], _expand_filename_wildcard(conn_info, 'dir/*.csv'))
+
+        self.assertEqual([
+            'dir/a.csv',
+            'dir/a.shp',
+        ], _expand_filename_wildcard(conn_info, 'dir/a.*'))
+
+        self.assertEqual([
+            'dir/a.csv',
+            'dir/b.csv',
+            'dir/a.shp',
+            'dir/b.shp',
+        ], _expand_filename_wildcard(conn_info, 'dir/*'))
+
+        self.assertEqual([
+            'dir/a.csv',
+            'dir/b.csv',
+            'dir/a.shp',
+            'dir/b.shp',
+            'anotherdir/a.csv',
+            'anotherdir/b.shp',
+        ], _expand_filename_wildcard(conn_info, '*'))
+
+        mock_get_list.assert_called_with('CONNECTION', 'CONTAINER')
+
+    @patch('gobdistribute.distribute._expand_filename_wildcard')
     @patch('gobdistribute.distribute._get_export_products')
-    def test_get_filenames(self, mock_get_export_products):
+    def test_get_filenames(self, mock_get_export_products, mock_expand_wildcard):
         mock_get_export_products.return_value = {
             'collection1': {
                 'product1': [
@@ -145,11 +186,15 @@ class TestDistribute(TestCase):
                 ]
             },
         }
+        mock_expand_wildcard.return_value = ['some/dir/a.csv', 'some/dir/b.csv']
 
         config = {
             'sources': [
                 {
                     'file_name': 'some/filename.csv'
+                },
+                {
+                    'file_name': 'some/dir/*.csv'
                 },
                 {
                     'export': {
@@ -166,16 +211,20 @@ class TestDistribute(TestCase):
                 }
             ]
         }
+        conn_info = {'conn': 'info'}
 
         self.assertEqual([
             'some/filename.csv',
+            'some/dir/a.csv',
+            'some/dir/b.csv',
             'catalog1/file1.csv',
             'catalog1/file2.shp',
             'catalog1/file3.dat',
             'catalog1/file5.csv',
             'catalog1/file6.shp',
-        ], _get_filenames(config, 'catalog1'))
+        ], _get_filenames(conn_info, config, 'catalog1'))
         mock_get_export_products.assert_called_with('catalog1')
+        mock_expand_wildcard.assert_called_with(conn_info, 'some/dir/*.csv')
 
     @patch('gobdistribute.distribute.Path')
     @patch('gobdistribute.distribute._get_file')
