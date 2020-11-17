@@ -65,14 +65,15 @@ def distribute(catalogue, fileset=None):
         for destination in config.get('destinations', []):
             logger.info(f"Connect to Destination {destination['name']}")
             datastore, base_directory = _get_datastore(destination['name'])
+            dst_dir = f"{base_directory}{destination['location']}"
 
             # Mapping is a list of tuples (local_file, destination_path)
             mapping = [
-                (file, f"{base_directory}{destination['location']}/{os.path.basename(file)}") for file in src_files
+                (file, f"{dst_dir}/{os.path.basename(file)}") for file in src_files
             ]
 
             logger.info(f"Remove old files from Destination {destination['name']}")
-            _delete_old_files(datastore, destination['location'], mapping)
+            _delete_old_files(datastore, dst_dir, mapping)
 
             logger.info(f"Distribute {len(mapping)} files to Destination {destination['name']}")
             _distribute_files(datastore, mapping)
