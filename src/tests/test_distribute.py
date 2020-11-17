@@ -80,9 +80,9 @@ class TestDistribute(TestCase):
             call(conn_info, '/tmpdir/fileset_b', mock_get_filenames()),
         ])
         mock_delete_old_files.assert_has_calls([
-            call(mock_get_datastore.return_value[0], 'location/a', mapping_a),
-            call(mock_get_datastore.return_value[0], 'location/b', mapping_b),
-            call(mock_get_datastore.return_value[0], 'location/c', mapping_c),
+            call(mock_get_datastore.return_value[0], 'BASE_DIR/location/a', mapping_a),
+            call(mock_get_datastore.return_value[0], 'BASE_DIR/location/b', mapping_b),
+            call(mock_get_datastore.return_value[0], 'BASE_DIR/location/c', mapping_c),
         ])
 
         # Reset mocks. Test with only one fileset
@@ -101,8 +101,8 @@ class TestDistribute(TestCase):
         ])
 
         mock_delete_old_files.assert_has_calls([
-            call(mock_get_datastore.return_value[0], 'location/a', mapping_a),
-            call(mock_get_datastore.return_value[0], 'location/b', mapping_b),
+            call(mock_get_datastore.return_value[0], 'BASE_DIR/location/a', mapping_a),
+            call(mock_get_datastore.return_value[0], 'BASE_DIR/location/b', mapping_b),
         ])
 
     @patch('gobdistribute.distribute.requests')
