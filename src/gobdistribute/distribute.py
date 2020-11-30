@@ -159,7 +159,7 @@ def _download_sources(conn_info, directory, filenames):
             f.write(src_file)
         src_files.append(temp_file)
 
-    logger.info(f"{len(src_files)} files downloaded")
+    logger.info(f"{len(src_files)} source files downloaded")
 
     return src_files
 
@@ -213,6 +213,7 @@ def _delete_old_files(datastore: Datastore, location: str, filemapping: List[tup
     for f in datastore.list_files(location):
         if _apply_filename_replacements(f) in dst_files:
             datastore.delete_file(f)
+            logger.info(f"Removed file {f}")
 
 
 def _distribute_files(datastore: Datastore, mapping: List[tuple]):
@@ -224,6 +225,7 @@ def _distribute_files(datastore: Datastore, mapping: List[tuple]):
     """
     for local_file, dst_path in mapping:
         datastore.put_file(local_file, dst_path)
+        logger.info(f"Distributed file {dst_path}")
 
 
 def _get_file(conn_info, filename):
