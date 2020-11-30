@@ -52,7 +52,7 @@ def distribute(catalogue, fileset=None):
     }
 
     # Get distribute configuration for the given catalogue, if a product is provided select only that product
-    distribute_filesets = _get_config(conn_info, catalogue)
+    distribute_filesets = _get_config(conn_info, catalogue, container_name)
     filesets = {fileset: distribute_filesets.get(fileset)} if fileset else distribute_filesets
 
     for fileset, config in filesets.items():
@@ -274,15 +274,16 @@ def _get_file(conn_info, filename):
     return obj_info, obj
 
 
-def _get_config(conn_info, catalogue):
+def _get_config(conn_info, catalogue: str, environment: str):
     """
     Get test definitions for the given catalogue
 
     :param conn_info: Objectstore connection
     :param catalogue: Catalogue name
+    :param environment: development, acceptatie, productie (equals container)
     :return:
     """
-    filename = f"distribute.{catalogue}.json"
+    filename = f"distribute.{environment}.{catalogue}.json"
     _, config_file = _get_file(conn_info, filename)
     if config_file is None:
         logger.error(f"Missing config file: {filename}")
