@@ -17,7 +17,7 @@ class TestDistribute(TestCase):
     @patch('gobdistribute.distribute._get_filenames')
     @patch('gobdistribute.distribute._download_sources')
     @patch('gobdistribute.distribute._distribute_files')
-    @patch('gobdistribute.distribute.CONTAINER_BASE', 'development')
+    @patch('gobdistribute.distribute.CONTAINER_BASE', 'THE_CONTAINER')
     @patch('gobdistribute.distribute.tempfile.gettempdir', lambda: '/tmpdir')
     def test_distribute(self, mock_distribute_files, mock_download_sources, mock_get_filenames, mock_delete_old_files,
                         mock_get_config, mock_get_datastore):
@@ -70,10 +70,10 @@ class TestDistribute(TestCase):
 
         conn_info = {
             "connection": mock_get_datastore.return_value[0].connection,
-            "container": 'development'
+            "container": 'THE_CONTAINER'
         }
 
-        mock_get_config.assert_called_with(conn_info, catalogue)
+        mock_get_config.assert_called_with(conn_info, catalogue, 'THE_CONTAINER')
         mock_get_filenames.assert_has_calls([
             call(conn_info, mock_get_config.return_value['fileset_a'], catalogue),
             call(conn_info, mock_get_config.return_value['fileset_b'], catalogue),
@@ -370,15 +370,18 @@ class TestDistribute(TestCase):
             'container': "any container"
         }
         catalogue = "any catalogue"
+        environment = "any container"
 
         mock_get_file.return_value = None, None
-        result = _get_config(conn_info, catalogue)
+        result = _get_config(conn_info, catalogue, environment)
         self.assertEqual(result, {})
 
+        mock_get_file.assert_called_with(conn_info, "distribute.any container.any catalogue.json")
+
         mock_get_file.return_value = None, b"1234"
-        result = _get_config(conn_info, catalogue)
+        result = _get_config(conn_info, catalogue, environment)
         self.assertEqual(result, 1234)
 
         mock_get_file.return_value = None, b"abc123"
-        result = _get_config(conn_info, catalogue)
+        result = _get_config(conn_info, catalogue, environment)
         self.assertEqual(result, {})
