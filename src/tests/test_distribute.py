@@ -25,7 +25,10 @@ class TestDistribute(TestCase):
         fileset = 'fileset_a'
 
         mock_get_datastore.return_value = (MagicMock(), 'BASE_DIR/')
-        mock_download_sources.return_value = ['path/to/source1.csv', 'path/to/source2.csv']
+        mock_download_sources.return_value = [
+            ('dst_location/source1.csv', 'path/to/source1.csv'),
+            ('dst_location/source2.csv', 'path/to/source2.csv'),
+        ]
 
         mock_get_config.return_value = {
             'fileset_a': {
@@ -46,16 +49,16 @@ class TestDistribute(TestCase):
         distribute(catalogue)
 
         mapping_a = [
-            ('path/to/source1.csv', 'BASE_DIR/location/a/source1.csv'),
-            ('path/to/source2.csv', 'BASE_DIR/location/a/source2.csv'),
+            ('BASE_DIR/location/a/dst_location/source1.csv', 'path/to/source1.csv'),
+            ('BASE_DIR/location/a/dst_location/source2.csv', 'path/to/source2.csv'),
         ]
         mapping_b = [
-            ('path/to/source1.csv', 'BASE_DIR/location/b/source1.csv'),
-            ('path/to/source2.csv', 'BASE_DIR/location/b/source2.csv'),
+            ('BASE_DIR/location/b/dst_location/source1.csv', 'path/to/source1.csv'),
+            ('BASE_DIR/location/b/dst_location/source2.csv', 'path/to/source2.csv'),
         ]
         mapping_c = [
-            ('path/to/source1.csv', 'BASE_DIR/location/c/source1.csv'),
-            ('path/to/source2.csv', 'BASE_DIR/location/c/source2.csv'),
+            ('BASE_DIR/location/c/dst_location/source1.csv', 'path/to/source1.csv'),
+            ('BASE_DIR/location/c/dst_location/source2.csv', 'path/to/source2.csv'),
         ]
 
         mock_get_datastore.assert_has_calls([
@@ -122,12 +125,13 @@ class TestDistribute(TestCase):
     def test_expand_filename_wildcard(self, mock_get_list):
         conn_info = {'connection': 'CONNECTION', 'container': 'CONTAINER'}
         mock_get_list.return_value = [
-            {'name': 'dir/a.csv'},
-            {'name': 'dir/b.csv'},
-            {'name': 'dir/a.shp'},
-            {'name': 'dir/b.shp'},
-            {'name': 'anotherdir/a.csv'},
-            {'name': 'anotherdir/b.shp'},
+            {'name': 'dir/a.csv', 'content_type': ''},
+            {'name': 'dir/b.csv', 'content_type': ''},
+            {'name': 'dir/a.shp', 'content_type': ''},
+            {'name': 'dir', 'content_type': 'application/directory'},  # should be ignored
+            {'name': 'dir/b.shp', 'content_type': ''},
+            {'name': 'anotherdir/a.csv', 'content_type': ''},
+            {'name': 'anotherdir/b.shp', 'content_type': ''},
         ]
 
         self.assertEqual([
@@ -191,10 +195,15 @@ class TestDistribute(TestCase):
         config = {
             'sources': [
                 {
-                    'file_name': 'some/filename.csv'
+                    'file_name': 'some/filename.csv',
+                    'base_dir': 'base_dir',
                 },
                 {
-                    'file_name': 'some/dir/*.csv'
+                    'file_name': '*.csv',
+                    'base_dir': 'some/dir',
+                },
+                {
+                    'file_name': 'other/filename_no_basedir.csv',
                 },
                 {
                     'export': {
@@ -214,14 +223,15 @@ class TestDistribute(TestCase):
         conn_info = {'conn': 'info'}
 
         self.assertEqual([
-            'some/filename.csv',
-            'some/dir/a.csv',
-            'some/dir/b.csv',
-            'catalog1/file1.csv',
-            'catalog1/file2.shp',
-            'catalog1/file3.dat',
-            'catalog1/file5.csv',
-            'catalog1/file6.shp',
+            ('some/filename.csv', 'base_dir/some/filename.csv'),
+            ('a.csv', 'some/dir/a.csv'),
+            ('b.csv', 'some/dir/b.csv'),
+            ('other/filename_no_basedir.csv', 'other/filename_no_basedir.csv'),
+            ('catalog1/file1.csv', 'catalog1/file1.csv'),
+            ('catalog1/file2.shp', 'catalog1/file2.shp'),
+            ('catalog1/file3.dat', 'catalog1/file3.dat'),
+            ('catalog1/file5.csv', 'catalog1/file5.csv'),
+            ('catalog1/file6.shp', 'catalog1/file6.shp')
         ], _get_filenames(conn_info, config, 'catalog1'))
         mock_get_export_products.assert_called_with('catalog1')
         mock_expand_wildcard.assert_called_with(conn_info, 'some/dir/*.csv')
@@ -229,34 +239,41 @@ class TestDistribute(TestCase):
     @patch('gobdistribute.distribute.Path')
     @patch('gobdistribute.distribute._get_file')
     def test_download_sources(self, mock_get_file, mock_path):
-        filenames = ['some/dir/any filename', 'some/other/dir/another filename']
+        filenames = [
+            ('some/dir/any filename', 'src/file/name1.csv'),
+            ('some/other/dir/another filename', 'src/file/name2.csv')
+        ]
 
         mock_get_file.side_effect = [
             ({'name': 'any file'}, 'any file'),
             ({'name': 'another file found with a different name'}, 'another file')
         ]
-        
+
         with patch("builtins.open") as mock_open:
-            _download_sources('any connection', 'any directory', filenames)
+            res = _download_sources('any connection', 'any directory', filenames)
 
             self.assertEqual([
-                call('any connection', 'some/dir/any filename'),
-                call('any connection', 'some/other/dir/another filename'),
-                ],
+                call('any connection', 'src/file/name1.csv'),
+                call('any connection', 'src/file/name2.csv'),
+            ],
                 mock_get_file.mock_calls,
                 "The method was not called with the correct arguments."
             )
 
+        self.assertEqual([
+            ('some/dir/any filename', 'any directory/some/dir/any filename'),
+            ('some/other/dir/another filename', 'any directory/some/other/dir/another filename'),
+        ], res)
+
         mock_open.assert_has_calls([
-            call('any directory/any file', 'wb'),
-            call('any directory/another file found with a different name', 'wb'),
+            call('any directory/some/dir/any filename', 'wb'),
+            call('any directory/some/other/dir/another filename', 'wb'),
         ], True)
 
     @patch('gobdistribute.distribute.get_datastore_config')
     @patch('gobdistribute.distribute.DatastoreFactory.get_datastore')
     @patch('gobdistribute.distribute.CONTAINER_BASE', "containerbase")
     def test_get_datastore(self, mock_get_datastore, mock_get_datastore_config):
-
         res = _get_datastore('any name')
         mock_get_datastore_config.assert_called_with('any name')
         mock_get_datastore.assert_called_with(mock_get_datastore_config.return_value)
@@ -284,8 +301,8 @@ class TestDistribute(TestCase):
         datastore.can_delete_file.return_value = False
 
         mapping = [
-            ('src a', 'dst 1'),
-            ('src b', 'dst 2'),
+            ('dst 1', 'src a'),
+            ('dst 2', 'src b'),
         ]
 
         _delete_old_files(datastore, 'some location', mapping)
@@ -303,8 +320,8 @@ class TestDistribute(TestCase):
     def test_distribute_files(self):
         datastore = MagicMock(spec=ObjectDatastore)
         mapping = [
-            ('src a', 'dst 1'),
-            ('src b', 'dst 2'),
+            ('dst 1', 'src a'),
+            ('dst 2', 'src b'),
         ]
 
         _distribute_files(datastore, mapping)
