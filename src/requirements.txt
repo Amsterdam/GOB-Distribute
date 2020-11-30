@@ -1,5 +1,5 @@
 flake8==3.7.9
 -e git+https://github.com/Amsterdam/GOB-Config.git@v0.4.12c#egg=gobconfig
--e git+https://github.com/Amsterdam/GOB-Core.git@v0.16.11d#egg=gobcore
+-e git+https://github.com/Amsterdam/GOB-Core.git@v0.17.1f#egg=gobcore
 pytest==3.6.3
 pytest-cov==2.5.1

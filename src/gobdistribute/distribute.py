@@ -53,6 +53,10 @@ def distribute(catalogue, fileset=None):
 
     # Get distribute configuration for the given catalogue, if a product is provided select only that product
     distribute_filesets = _get_config(conn_info, catalogue, container_name)
+
+    logger.info(f"Disconnect from Objectstore")
+    datastore.disconnect()
+
     filesets = {fileset: distribute_filesets.get(fileset)} if fileset else distribute_filesets
 
     for fileset, config in filesets.items():
@@ -78,6 +82,9 @@ def distribute(catalogue, fileset=None):
             logger.info(f"Distribute {len(mapping)} files to Destination {destination['name']}")
             _distribute_files(datastore, mapping)
             logger.info(f"Done distributing files to {destination['name']}")
+
+            logger.info(f"Disconnect from Destination {destination['name']}")
+            datastore.disconnect()
 
 
 def _get_export_products(catalogue: str):
