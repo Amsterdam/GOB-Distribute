@@ -5,7 +5,7 @@ import re
 import tempfile
 import requests
 
-from typing import List
+from typing import List, Tuple
 
 from objectstore.objectstore import get_full_container_list, get_object
 
@@ -52,7 +52,11 @@ def distribute(catalogue, fileset=None):
     }
 
     # Get distribute configuration for the given catalogue, if a product is provided select only that product
-    distribute_filesets = _get_config(conn_info, catalogue)
+    distribute_filesets = _get_config(conn_info, catalogue, container_name)
+
+    logger.info(f"Disconnect from Objectstore")
+    datastore.disconnect()
+
     filesets = {fileset: distribute_filesets.get(fileset)} if fileset else distribute_filesets
 
     for fileset, config in filesets.items():
@@ -67,9 +71,9 @@ def distribute(catalogue, fileset=None):
             datastore, base_directory = _get_datastore(destination['name'])
             dst_dir = f"{base_directory}{destination['location']}"
 
-            # Mapping is a list of tuples (local_file, destination_path)
+            # Mapping is a list of tuples (destination_path, local_file)
             mapping = [
-                (file, f"{dst_dir}/{os.path.basename(file)}") for file in src_files
+                (f"{dst_dir}/{dst_path}", local_file) for dst_path, local_file in src_files
             ]
 
             logger.info(f"Remove old files from Destination {destination['name']}")
@@ -78,6 +82,9 @@ def distribute(catalogue, fileset=None):
             logger.info(f"Distribute {len(mapping)} files to Destination {destination['name']}")
             _distribute_files(datastore, mapping)
             logger.info(f"Done distributing files to {destination['name']}")
+
+            logger.info(f"Disconnect from Destination {destination['name']}")
+            datastore.disconnect()
 
 
 def _get_export_products(catalogue: str):
@@ -102,16 +109,25 @@ def _expand_filename_wildcard(conn_info: dict, filename: str):
     result = []
     match = filename.replace(WILDCARD, '.*')
     for item in get_full_container_list(conn_info['connection'], conn_info['container']):
-        if re.match(match, item['name']):
+        if re.match(match, item['name']) and item['content_type'] != 'application/directory':
             result.append(item['name'])
     return result
 
 
-def _get_filenames(conn_info: dict, config: dict, catalogue: str):
+def _dst_path(source_file_path: str, base_dir: str):
+    if not base_dir:
+        return source_file_path
+
+    return source_file_path.replace(base_dir, "")
+
+
+def _get_filenames(conn_info: dict, config: dict, catalogue: str) -> List[Tuple[str, str]]:
     """Determines filenames to download for sources in config.
 
     Source should have either 'file_name' or 'export' set. When source is 'file_name', this name is used. When source
     is 'export', the filenames to download are derived from the export products definition.
+
+    Returns a list op 2-tuples (dst_path, source_filename), where dst_path is the relative location on the destination
 
     :param config:
     :param catalogue:
@@ -123,10 +139,15 @@ def _get_filenames(conn_info: dict, config: dict, catalogue: str):
 
     for source in config.get('sources', []):
         if source.get('file_name'):
+            base_dir = source.get('base_dir', '')
+            base_dir = f"{base_dir}/" if base_dir else base_dir
+            source_path = base_dir + source['file_name']
+
             if WILDCARD in source['file_name']:
-                filenames.extend(_expand_filename_wildcard(conn_info, source['file_name']))
+                wildcard_files = _expand_filename_wildcard(conn_info, source_path)
+                filenames.extend([(_dst_path(filename, base_dir), filename) for filename in wildcard_files])
             else:
-                filenames.append(source['file_name'])
+                filenames.append((_dst_path(source_path, base_dir), source_path))
 
         elif source.get('export'):
             collection_config = export_products.get(source['export']['collection'], {})
@@ -138,26 +159,34 @@ def _get_filenames(conn_info: dict, config: dict, catalogue: str):
                 else collection_config.values()
 
             # Flatten the list of lists (products)
-            filenames += [f'{catalogue}/{item}' for product in products for item in product]
+            filenames += [(item, item) for item in [f'{catalogue}/{item}' for product in products for item in product]]
 
     return filenames
 
 
-def _download_sources(conn_info, directory, filenames):
+def _download_sources(conn_info, directory, filenames) -> List[Tuple[str, str]]:
+    """
+
+    :param conn_info:
+    :param directory:
+    :param filenames: list of tuples (dst_path, src_filename)
+    :return:
+    """
     path = Path(directory)
     path.mkdir(exist_ok=True)
 
     src_files = []
 
-    for filename in filenames:
+    for dst_path, filename in filenames:
         src_file_info, src_file = _get_file(conn_info, filename)
 
-        # Store file in temporary directory. Use src_file_info['name'] as name, as the filename found can differ from
-        # the exact filename we were looking for.
-        temp_file = os.path.join(directory, os.path.basename(src_file_info['name']))
+        temp_file = os.path.join(directory, dst_path)
+        path = Path(os.path.dirname(temp_file))
+        path.mkdir(exist_ok=True, parents=True)
+
         with open(temp_file, "wb") as f:
             f.write(src_file)
-        src_files.append(temp_file)
+        src_files.append((dst_path, temp_file))
 
     logger.info(f"{len(src_files)} source files downloaded")
 
@@ -199,7 +228,7 @@ def _delete_old_files(datastore: Datastore, location: str, filemapping: List[tup
 
     :param datastore:
     :param location:
-    :param filemapping:
+    :param filemapping: list of tuples (dst_path, local_file_path)
     :return:
     """
 
@@ -208,7 +237,7 @@ def _delete_old_files(datastore: Datastore, location: str, filemapping: List[tup
         return
 
     # Apply replacements to all dst filenames
-    dst_files = [_apply_filename_replacements(t[1]) for t in filemapping]
+    dst_files = [_apply_filename_replacements(t[0]) for t in filemapping]
 
     for f in datastore.list_files(location):
         if _apply_filename_replacements(f) in dst_files:
@@ -220,10 +249,10 @@ def _distribute_files(datastore: Datastore, mapping: List[tuple]):
     """
 
     :param datastore:
-    :param mapping:
+    :param mapping: list of tuples (dst_path, local_file_path)
     :return:
     """
-    for local_file, dst_path in mapping:
+    for dst_path, local_file in mapping:
         datastore.put_file(local_file, dst_path)
         logger.info(f"Distributed file {dst_path}")
 
@@ -252,15 +281,16 @@ def _get_file(conn_info, filename):
     return obj_info, obj
 
 
-def _get_config(conn_info, catalogue):
+def _get_config(conn_info, catalogue: str, environment: str):
     """
     Get test definitions for the given catalogue
 
     :param conn_info: Objectstore connection
     :param catalogue: Catalogue name
+    :param environment: development, acceptatie, productie (equals container)
     :return:
     """
-    filename = f"distribute.{catalogue}.json"
+    filename = f"distribute.{environment}.{catalogue}.json"
     _, config_file = _get_file(conn_info, filename)
     if config_file is None:
         logger.error(f"Missing config file: {filename}")
