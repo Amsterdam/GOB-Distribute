@@ -137,6 +137,8 @@ def _get_filenames(conn_info: dict, config: dict, catalogue: str) -> List[Tuple[
     export_products = _get_export_products(catalogue)
     filenames = []
 
+    logger.info("Determining files from source to distribute")
+
     for source in config.get('sources', []):
         if source.get('file_name'):
             base_dir = source.get('base_dir', '')
@@ -146,8 +148,10 @@ def _get_filenames(conn_info: dict, config: dict, catalogue: str) -> List[Tuple[
             if WILDCARD in source['file_name']:
                 wildcard_files = _expand_filename_wildcard(conn_info, source_path)
                 filenames.extend([(_dst_path(filename, base_dir), filename) for filename in wildcard_files])
+                logger.info(f"Distribute files from source matching {source_path}")
             else:
                 filenames.append((_dst_path(source_path, base_dir), source_path))
+                logger.info(f"Distribute file from source matching {source_path}")
 
         elif source.get('export'):
             collection_config = export_products.get(source['export']['collection'], {})
@@ -159,7 +163,13 @@ def _get_filenames(conn_info: dict, config: dict, catalogue: str) -> List[Tuple[
                 else collection_config.values()
 
             # Flatten the list of lists (products)
-            filenames += [(item, item) for item in [f'{catalogue}/{item}' for product in products for item in product]]
+            products = [item for product in products for item in product]
+
+            for product in products:
+                logger.info(f"Distribute files from source from export product set {source['export']['collection']} "
+                            f"{product}")
+
+            filenames += [(item, item) for item in [f'{catalogue}/{item}' for item in products]]
 
     return filenames
 
@@ -242,7 +252,6 @@ def _delete_old_files(datastore: Datastore, location: str, filemapping: List[tup
     for f in datastore.list_files(location):
         if _apply_filename_replacements(f) in dst_files:
             datastore.delete_file(f)
-            logger.info(f"Removed file {f}")
 
 
 def _distribute_files(datastore: Datastore, mapping: List[tuple]):
@@ -254,7 +263,6 @@ def _distribute_files(datastore: Datastore, mapping: List[tuple]):
     """
     for dst_path, local_file in mapping:
         datastore.put_file(local_file, dst_path)
-        logger.info(f"Distributed file {dst_path}")
 
 
 def _get_file(conn_info, filename):
