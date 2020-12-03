@@ -79,7 +79,9 @@ def distribute(catalogue, fileset=None):
             logger.info(f"Remove old files from Destination {destination['name']}")
             _delete_old_files(datastore, dst_dir, mapping)
 
-            logger.info(f"Distribute {len(mapping)} files to Destination {destination['name']}")
+            logger.info(f"Distribute new files to Destination: {destination['name']}")
+            logger.info(f"Distribute {len(mapping)} files to Location: {dst_dir}")
+
             _distribute_files(datastore, mapping)
             logger.info(f"Done distributing files to {destination['name']}")
 
@@ -148,10 +150,10 @@ def _get_filenames(conn_info: dict, config: dict, catalogue: str) -> List[Tuple[
             if WILDCARD in source['file_name']:
                 wildcard_files = _expand_filename_wildcard(conn_info, source_path)
                 filenames.extend([(_dst_path(filename, base_dir), filename) for filename in wildcard_files])
-                logger.info(f"Distribute files from source matching {source_path}")
+                logger.info(f"Distribute files matching from source: {source_path}")
             else:
                 filenames.append((_dst_path(source_path, base_dir), source_path))
-                logger.info(f"Distribute file from source matching {source_path}")
+                logger.info(f"Distribute file matching from source: {source_path}")
 
         elif source.get('export'):
             collection_config = export_products.get(source['export']['collection'], {})
