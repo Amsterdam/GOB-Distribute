@@ -4,6 +4,7 @@ from pathlib import Path
 import re
 import tempfile
 import requests
+import logging
 
 from typing import List, Tuple
 
@@ -26,6 +27,8 @@ _REPLACEMENTS = {
 }
 
 WILDCARD = "*"
+
+logging.getLogger("paramiko").setLevel(logging.WARNING)
 
 
 def distribute(catalogue, fileset=None):
