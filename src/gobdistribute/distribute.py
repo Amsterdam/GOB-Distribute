@@ -148,6 +148,7 @@ def _get_filenames(conn_info: dict, config: dict, catalogue: str) -> List[Tuple[
         if source.get('file_name'):
             base_dir = source.get('base_dir', '')
             base_dir = f"{base_dir}/" if base_dir else base_dir
+            base_dir = base_dir[:-1] if base_dir[-2:] == "//" else base_dir
             source_path = base_dir + source['file_name']
 
             if WILDCARD in source['file_name']:

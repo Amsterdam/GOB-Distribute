@@ -196,7 +196,7 @@ class TestDistribute(TestCase):
             'sources': [
                 {
                     'file_name': 'some/filename.csv',
-                    'base_dir': 'base_dir',
+                    'base_dir': 'base_dir/',
                 },
                 {
                     'file_name': '*.csv',
