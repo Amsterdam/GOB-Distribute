@@ -6,10 +6,10 @@ variables:
 
 resources:
   repositories:
-  - repository: gob-api
+  - repository: gob-distribute
     type: github
     endpoint: Amsterdam
-    name: Amsterdam/Gob-API
+    name: Amsterdam/Gob-Distribute
 
 
 steps:
