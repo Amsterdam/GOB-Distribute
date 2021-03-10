@@ -1,11 +1,11 @@
 import json
 
 from unittest import TestCase
-from unittest.mock import call, mock_open, patch, MagicMock
+from unittest.mock import call, patch, MagicMock
 
 from gobdistribute.distribute import distribute, _download_sources, _distribute_files, _get_file, _get_config, \
     ObjectDatastore, _get_filenames, _get_export_products, GOB_OBJECTSTORE, _get_datastore, \
-    _apply_filename_replacements, _delete_old_files, _expand_filename_wildcard
+    _apply_filename_replacements, _expand_filename_wildcard, _distribute_file
 
 
 @patch('gobdistribute.distribute.logger', MagicMock())
@@ -13,13 +13,12 @@ class TestDistribute(TestCase):
 
     @patch('gobdistribute.distribute._get_datastore')
     @patch('gobdistribute.distribute._get_config')
-    @patch('gobdistribute.distribute._delete_old_files')
     @patch('gobdistribute.distribute._get_filenames')
     @patch('gobdistribute.distribute._download_sources')
     @patch('gobdistribute.distribute._distribute_files')
     @patch('gobdistribute.distribute.CONTAINER_BASE', 'THE_CONTAINER')
     @patch('gobdistribute.distribute.tempfile.gettempdir', lambda: '/tmpdir')
-    def test_distribute(self, mock_distribute_files, mock_download_sources, mock_get_filenames, mock_delete_old_files,
+    def test_distribute(self, mock_distribute_files, mock_download_sources, mock_get_filenames,
                         mock_get_config, mock_get_datastore):
         catalogue = 'any catalogue'
         fileset = 'fileset_a'
@@ -82,16 +81,10 @@ class TestDistribute(TestCase):
             call(conn_info, '/tmpdir/fileset_a', mock_get_filenames()),
             call(conn_info, '/tmpdir/fileset_b', mock_get_filenames()),
         ])
-        mock_delete_old_files.assert_has_calls([
-            call(mock_get_datastore.return_value[0], 'BASE_DIR/location/a', mapping_a),
-            call(mock_get_datastore.return_value[0], 'BASE_DIR/location/b', mapping_b),
-            call(mock_get_datastore.return_value[0], 'BASE_DIR/location/c', mapping_c),
-        ])
 
         # Reset mocks. Test with only one fileset
         mock_download_sources.reset_mock()
         mock_get_filenames.reset_mock()
-        mock_delete_old_files.reset_mock()
 
         distribute(catalogue, fileset)
 
@@ -101,11 +94,6 @@ class TestDistribute(TestCase):
 
         mock_download_sources.assert_has_calls([
             call(conn_info, '/tmpdir/fileset_a', mock_get_filenames()),
-        ])
-
-        mock_delete_old_files.assert_has_calls([
-            call(mock_get_datastore.return_value[0], 'BASE_DIR/location/a', mapping_a),
-            call(mock_get_datastore.return_value[0], 'BASE_DIR/location/b', mapping_b),
         ])
 
     @patch('gobdistribute.distribute.requests')
@@ -294,42 +282,54 @@ class TestDistribute(TestCase):
         for inp, outp in testcases:
             self.assertEqual(outp, _apply_filename_replacements(inp))
 
-    @patch('gobdistribute.distribute._apply_filename_replacements', lambda x: f"_{x}")
-    def test_delete_old_files(self):
+    @patch('gobdistribute.distribute._distribute_file')
+    def test_distribute_files(self, mock_distribute_file):
         datastore = MagicMock(spec=ObjectDatastore)
-        datastore.can_list_file.return_value = False
-        datastore.can_delete_file.return_value = False
-
+        datastore.list_files.return_value = [
+            "some/dir/a/b/file12345678.txt",
+            "some/dir/a/b/file90123453.txt",
+            "some/other/dir/with/file.txt",
+        ]
         mapping = [
-            ('dst 1', 'src a'),
-            ('dst 2', 'src b'),
+            ('a/b/dstfile.txt', 'somelocalfile.txt'),
+            ('a/b/file11112233.txt', 'someotherlocalfile.txt'),
         ]
 
-        _delete_old_files(datastore, 'some location', mapping)
+        _distribute_files(datastore, mapping, 'some/dir')
 
-        datastore.list_files.assert_not_called()
-
-        datastore.can_list_file.return_value = True
-        datastore.can_delete_file.return_value = True
-        datastore.list_files.return_value = ['dst 3', 'dst 2']
-
-        _delete_old_files(datastore, 'some location', mapping)
-        datastore.delete_file.assert_has_calls([call('dst 2')])
-        datastore.delete_file.assert_called_once()
-
-    def test_distribute_files(self):
-        datastore = MagicMock(spec=ObjectDatastore)
-        mapping = [
-            ('dst 1', 'src a'),
-            ('dst 2', 'src b'),
-        ]
-
-        _distribute_files(datastore, mapping)
-
-        datastore.put_file.assert_has_calls([
-            call('src a', 'dst 1'),
-            call('src b', 'dst 2'),
+        mock_distribute_file.assert_has_calls([
+            call(datastore, 'somelocalfile.txt', 'some/dir/a/b/dstfile.txt', []),
+            call(datastore, 'someotherlocalfile.txt', 'some/dir/a/b/file11112233.txt', [
+                'some/dir/a/b/file12345678.txt',
+                'some/dir/a/b/file90123453.txt',
+            ])
         ])
+
+    def test_distribute_file(self):
+        datastore = MagicMock(spec=ObjectDatastore)
+        local_file = 'localfile.txt'
+        destination_filename = 'destination_file.txt'
+        existing_files = [
+            'existingfile1.txt',
+            'existingfile2.txt',
+        ]
+
+        _distribute_file(datastore, local_file, destination_filename, existing_files)
+        datastore.delete_file.assert_has_calls([
+            call('existingfile1.txt'),
+            call('existingfile2.txt'),
+        ])
+        datastore.put_file.assert_called_with('localfile.txt', 'destination_file.txt')
+
+        datastore.delete_file.reset_mock()
+        datastore.put_file.reset_mock()
+        datastore.delete_file.side_effect = OSError
+
+        _distribute_file(datastore, local_file, destination_filename, existing_files)
+        datastore.delete_file.assert_has_calls([
+            call('existingfile1.txt'),
+        ])
+        datastore.put_file.assert_not_called()
 
     @patch('gobdistribute.distribute.get_object')
     @patch('gobdistribute.distribute.get_full_container_list')
