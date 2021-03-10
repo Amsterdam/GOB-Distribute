@@ -1,24 +1,19 @@
 import json
-import os
-from pathlib import Path
-import re
-import tempfile
-import requests
 import logging
-
-from typing import List, Tuple
-
-from objectstore.objectstore import get_full_container_list, get_object
-
+import os
+import re
+import requests
+import tempfile
 from gobconfig.datastore.config import get_datastore_config
-
-from gobcore.datastore.factory import DatastoreFactory, Datastore
+from gobcore.datastore.factory import Datastore, DatastoreFactory
 from gobcore.datastore.objectstore import ObjectDatastore
 from gobcore.logging.logger import logger
+from objectstore.objectstore import get_full_container_list, get_object
+from pathlib import Path
+from typing import List, Tuple
 
-from gobdistribute.config import CONTAINER_BASE, GOB_OBJECTSTORE, EXPORT_API_HOST
+from gobdistribute.config import CONTAINER_BASE, EXPORT_API_HOST, GOB_OBJECTSTORE
 from gobdistribute.utils import json_loads
-
 
 # Allow for variables in filenames. A variable will be converted into a regular expression
 # and vice versa for a generated proposal
@@ -72,20 +67,16 @@ def distribute(catalogue, fileset=None):
         for destination in config.get('destinations', []):
             logger.info(f"Connect to Destination {destination['name']}")
             datastore, base_directory = _get_datastore(destination['name'])
+
+            assert datastore.can_list_file() and datastore.can_delete_file(), \
+                "Datastore does not support file deletions"
+
             dst_dir = f"{base_directory}{destination['location']}"
 
-            # Mapping is a list of tuples (destination_path, local_file)
-            mapping = [
-                (f"{dst_dir}/{dst_path}", local_file) for dst_path, local_file in src_files
-            ]
-
-            logger.info(f"Remove old files from Destination {destination['name']}")
-            _delete_old_files(datastore, dst_dir, mapping)
-
             logger.info(f"Distribute new files to Destination: {destination['name']}")
-            logger.info(f"Distribute {len(mapping)} files to Location: {dst_dir}")
+            logger.info(f"Distribute {len(src_files)} files to Location: {dst_dir}")
 
-            _distribute_files(datastore, mapping)
+            _distribute_files(datastore, src_files, dst_dir)
             logger.info(f"Done distributing files to {destination['name']}")
 
             logger.info(f"Disconnect from Destination {destination['name']}")
@@ -238,37 +229,48 @@ def _apply_filename_replacements(filename: str):
     return filename
 
 
-def _delete_old_files(datastore: Datastore, location: str, filemapping: List[tuple]):
-    """Deletes all files present that match the destination filenames, taking into consideration the filename
-    replacements
-
-    :param datastore:
-    :param location:
-    :param filemapping: list of tuples (dst_path, local_file_path)
-    :return:
-    """
-
-    if not datastore.can_list_file() or not datastore.can_delete_file():
-        logger.warning(f"Can not delete old files from Destination. Datastore does not support deletions.")
-        return
-
-    # Apply replacements to all dst filenames
-    dst_files = [_apply_filename_replacements(t[0]) for t in filemapping]
-
-    for f in datastore.list_files(location):
-        if _apply_filename_replacements(f) in dst_files:
-            datastore.delete_file(f)
-
-
-def _distribute_files(datastore: Datastore, mapping: List[tuple]):
+def _distribute_files(datastore: Datastore, mapping: List[tuple], dst_dir: str):
     """
 
     :param datastore:
-    :param mapping: list of tuples (dst_path, local_file_path)
+    :param mapping: list of tuples containing (destination_path, local_path) pairs
+    :param dst_dir: base dir to distribute fils to, prepended to destination_path to get to the full path
     :return:
     """
+    distribute_files = {}
+
+    # Prepare distribution. Determine existing files to delete
     for dst_path, local_file in mapping:
-        datastore.put_file(local_file, dst_path)
+        destination = f'{dst_dir}/{dst_path}'
+        fname_replaced = _apply_filename_replacements(destination)
+        distribute_files[fname_replaced] = {
+            'local_file': local_file,
+            'destination': destination,
+            'existing_files': [],
+        }
+
+    for f in datastore.list_files(dst_dir):
+        fname_replaced = _apply_filename_replacements(f)
+        if fname_replaced in distribute_files:
+            distribute_files[fname_replaced]['existing_files'].append(f)
+
+    for dist_file in distribute_files.values():
+        _distribute_file(datastore, dist_file['local_file'], dist_file['destination'], dist_file['existing_files'])
+
+
+def _distribute_file(datastore: Datastore, local_file: str, destination_filename: str, existing_files: List[str]):
+    skip = False
+
+    for f in existing_files:
+        try:
+            datastore.delete_file(f)
+        except OSError:
+            logger.error(f"Could not delete file {f}. Skipping distribution of {destination_filename}")
+            skip = True
+            break
+
+    if not skip:
+        datastore.put_file(local_file, destination_filename)
 
 
 def _get_file(conn_info, filename):
