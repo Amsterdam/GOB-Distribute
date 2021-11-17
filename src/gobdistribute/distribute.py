@@ -6,9 +6,8 @@ import requests
 import tempfile
 from gobconfig.datastore.config import get_datastore_config
 from gobcore.datastore.factory import Datastore, DatastoreFactory
-from gobcore.datastore.objectstore import ObjectDatastore
+from gobcore.datastore.objectstore import ObjectDatastore, get_full_container_list, get_object
 from gobcore.logging.logger import logger
-from objectstore.objectstore import get_full_container_list, get_object
 from pathlib import Path
 from typing import List, Tuple
 
@@ -38,7 +37,7 @@ def distribute(catalogue, fileset=None):
     distribute_info += f" fileset {fileset}" if fileset else ""
     logger.info(distribute_info)
 
-    logger.info(f"Connect to Objectstore")
+    logger.info("Connect to Objectstore")
 
     datastore, _ = _get_datastore(GOB_OBJECTSTORE)
     container_name = CONTAINER_BASE
@@ -52,7 +51,7 @@ def distribute(catalogue, fileset=None):
     # Get distribute configuration for the given catalogue, if a product is provided select only that product
     distribute_filesets = _get_config(conn_info, catalogue, container_name)
 
-    logger.info(f"Disconnect from Objectstore")
+    logger.info("Disconnect from Objectstore")
     datastore.disconnect()
 
     filesets = {fileset: distribute_filesets.get(fileset)} if fileset else distribute_filesets
