@@ -1,4 +1,4 @@
-FROM amsterdam/python:3.7-buster
+FROM amsterdam/python:3.9-buster
 MAINTAINER datapunt@amsterdam.nl
 
 # Install gobdistribute in /app folder
@@ -19,7 +19,7 @@ ENV C_INCLUDE_PATH=/usr/include/gdal
 
 # Install required Python packages
 COPY requirements.txt /app/
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN LIBGDAL_VERSION=$(gdal-config --version) pip3 install --no-cache-dir -r requirements.txt
 RUN rm requirements.txt
 
 # Copy gobdistribute module
