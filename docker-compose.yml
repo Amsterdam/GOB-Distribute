@@ -13,5 +13,5 @@ services:
 
 networks:
   default:
-    external:
-      name: gob-network
+    external: true
+    name: gob-network
