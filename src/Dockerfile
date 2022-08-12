@@ -26,3 +26,19 @@ RUN rm -rf /opt/wheelhouse
 COPY gobdistribute gobdistribute
 
 CMD ["python", "-m", "gobdistribute"]
+
+
+# Test.
+FROM application as test
+
+# Remove gobcore/gobconfig tests (if present)
+RUN rm -rf /app/src/gobcore/tests
+RUN rm -rf /app/src/gobconfig/tests
+
+# Copy tests
+COPY tests tests
+COPY .flake8 .flake8
+COPY test.sh test.sh
+
+# Copy jenkins files
+COPY .jenkins /.jenkins
