@@ -1,16 +1,14 @@
 # GOB-Distribute
 
-This repository will be responsible for distributing the results of GOB-Export to a configurable list of locations.
-
-
-
+This repository will be responsible for distributing the results of [GOB-Export](https://github.com/Amsterdam/GOB-Export) to a configurable list of locations.
 
 # Environment variables
-Example environment variables are set in .env.example. Create your own .env based on this example file:
+Example environment variables are set in `.env.example`. Create your own `.env` based on this example file:
 
 ```bash
 cp .env.example .env
 ```
+
 To initialise the configuration:
 
 ```bash
@@ -26,28 +24,28 @@ is required to run this component.
 
 ## Requirements
 
-* docker-compose >= 1.17
-* docker ce >= 18.03
+* docker compose >= 1.25
+* Docker CE >= 18.09
 
 ## Run
 
 ```bash
-docker-compose build
-docker-compose up &
+docker compose build
+docker compose up &
 ```
 
 ## Tests
 
 ```bash
-docker-compose -f src/.jenkins/test/docker-compose.yml build
-docker-compose -f src/.jenkins/test/docker-compose.yml run test
+docker compose -f src/.jenkins/test/docker-compose.yml build
+docker compose -f src/.jenkins/test/docker-compose.yml run test
 ```
 
 # Local
 
 ## Requirements
 
-* python >= 3.6
+* Python >= 3.6
 
 ## Initialisation
 
