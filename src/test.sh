@@ -3,15 +3,14 @@
 set -u # crash on missing env
 set -e # stop on any error
 
-# Clear any cached results
-find . -name "*.pyc" -exec rm -f {} \;
+# Coverage 6: coverage run --data-file=/tmp/.coveragerc …
+export COVERAGE_FILE=/tmp/.coverage
 
 echo "Running style checks"
 flake8
 
 echo "Running unit tests"
-pytest tests/
+coverage run --source=./gobdistribute -m pytest tests/
 
 echo "Running coverage tests"
-
-pytest tests/ --cov=gobdistribute --cov-report html --cov-fail-under=100
+coverage report --show-missing --fail-under=100
