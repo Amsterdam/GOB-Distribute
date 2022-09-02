@@ -7,9 +7,11 @@ import tempfile
 from gobconfig.datastore.config import get_datastore_config
 from gobcore.datastore.factory import Datastore, DatastoreFactory
 from gobcore.datastore.objectstore import ObjectDatastore, get_full_container_list, get_object
+from gobcore.exceptions import GOBException
 from gobcore.logging.logger import logger
 from pathlib import Path
 from typing import List, Tuple
+from requests.exceptions import ConnectionError
 
 from gobdistribute.config import CONTAINER_BASE, EXPORT_API_HOST, GOB_OBJECTSTORE
 from gobdistribute.utils import json_loads
@@ -50,6 +52,7 @@ def distribute(catalogue, fileset=None):
 
     # Get distribute configuration for the given catalogue, if a product is provided select only that product
     distribute_filesets = _get_config(conn_info, catalogue, container_name)
+    export_products = _get_export_products(catalogue)
 
     logger.info("Disconnect from Objectstore")
     datastore.disconnect()
@@ -60,7 +63,7 @@ def distribute(catalogue, fileset=None):
         logger.info(f"Download fileset {fileset}")
         temp_fileset_dir = os.path.join(tempfile.gettempdir(), fileset)
 
-        filenames = _get_filenames(conn_info, config, catalogue)
+        filenames = _get_filenames(conn_info, config, catalogue, export_products)
         src_files = _download_sources(conn_info, temp_fileset_dir, filenames)
 
         for destination in config.get('destinations', []):
@@ -88,7 +91,12 @@ def _get_export_products(catalogue: str):
     :return:
     """
     r = requests.get(f'{EXPORT_API_HOST}/products')
-    r.raise_for_status()
+    try:
+        r.raise_for_status()
+    except ConnectionError:
+        logger.error("Fetching export products from GOB-Export failed")
+        raise GOBException("Fetching export products from GOB-Export failed")
+
     data = json.loads(r.text)
     return data.get(catalogue)
 
@@ -116,7 +124,7 @@ def _dst_path(source_file_path: str, base_dir: str):
     return source_file_path.replace(base_dir, "")
 
 
-def _get_filenames(conn_info: dict, config: dict, catalogue: str) -> List[Tuple[str, str]]:
+def _get_filenames(conn_info: dict, config: dict, catalogue: str, export_products: dict) -> List[Tuple[str, str]]:
     """Determines filenames to download for sources in config.
 
     Source should have either 'file_name' or 'export' set. When source is 'file_name', this name is used. When source
@@ -129,7 +137,6 @@ def _get_filenames(conn_info: dict, config: dict, catalogue: str) -> List[Tuple[
     :return:
     """
     # Download exports product definition
-    export_products = _get_export_products(catalogue)
     filenames = []
 
     logger.info("Determining files from source to distribute")

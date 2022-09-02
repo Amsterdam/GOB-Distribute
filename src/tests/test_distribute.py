@@ -3,6 +3,9 @@ import json
 from unittest import TestCase
 from unittest.mock import call, patch, MagicMock
 
+import requests.exceptions
+from gobcore.exceptions import GOBException
+
 from gobdistribute.distribute import distribute, _download_sources, _distribute_files, _get_file, _get_config, \
     ObjectDatastore, _get_filenames, _get_export_products, GOB_OBJECTSTORE, _get_datastore, \
     _apply_filename_replacements, _expand_filename_wildcard, _distribute_file
@@ -14,11 +17,12 @@ class TestDistribute(TestCase):
     @patch('gobdistribute.distribute._get_datastore')
     @patch('gobdistribute.distribute._get_config')
     @patch('gobdistribute.distribute._get_filenames')
+    @patch('gobdistribute.distribute._get_export_products')
     @patch('gobdistribute.distribute._download_sources')
     @patch('gobdistribute.distribute._distribute_files')
     @patch('gobdistribute.distribute.CONTAINER_BASE', 'THE_CONTAINER')
     @patch('gobdistribute.distribute.tempfile.gettempdir', lambda: '/tmpdir')
-    def test_distribute(self, mock_distribute_files, mock_download_sources, mock_get_filenames,
+    def test_distribute(self, mock_distribute_files, mock_download_sources, mock_get_export_products, mock_get_filenames,
                         mock_get_config, mock_get_datastore):
         catalogue = 'any catalogue'
         fileset = 'fileset_a'
@@ -74,27 +78,33 @@ class TestDistribute(TestCase):
 
         mock_get_config.assert_called_with(conn_info, catalogue, 'THE_CONTAINER')
         mock_get_filenames.assert_has_calls([
-            call(conn_info, mock_get_config.return_value['fileset_a'], catalogue),
-            call(conn_info, mock_get_config.return_value['fileset_b'], catalogue),
+            call(conn_info, mock_get_config.return_value['fileset_a'], catalogue, mock_get_export_products.return_value),
+            call(conn_info, mock_get_config.return_value['fileset_b'], catalogue, mock_get_export_products.return_value),
         ])
         mock_download_sources.assert_has_calls([
             call(conn_info, '/tmpdir/fileset_a', mock_get_filenames()),
             call(conn_info, '/tmpdir/fileset_b', mock_get_filenames()),
         ])
+        mock_get_export_products.assert_called_with(catalogue)
+        mock_get_export_products.assert_called_once()
 
         # Reset mocks. Test with only one fileset
         mock_download_sources.reset_mock()
         mock_get_filenames.reset_mock()
+        mock_get_export_products.reset_mock()
 
         distribute(catalogue, fileset)
 
         mock_get_filenames.assert_has_calls([
-            call(conn_info, mock_get_config.return_value['fileset_a'], catalogue),
+            call(conn_info, mock_get_config.return_value['fileset_a'], catalogue, mock_get_export_products.return_value),
         ])
 
         mock_download_sources.assert_has_calls([
             call(conn_info, '/tmpdir/fileset_a', mock_get_filenames()),
         ])
+
+        mock_get_export_products.assert_called_with(catalogue)
+        mock_get_export_products.assert_called_once()
 
     @patch('gobdistribute.distribute.requests')
     @patch('gobdistribute.distribute.EXPORT_API_HOST', 'http://exportapihost')
@@ -108,6 +118,14 @@ class TestDistribute(TestCase):
         self.assertEqual(resp['c'], _get_export_products('c'))
         mock_requests.get.assert_called_with('http://exportapihost/products')
         return_value.raise_for_status.assert_called_once()
+
+    @patch('gobdistribute.distribute.requests')
+    @patch('gobdistribute.distribute.EXPORT_API_HOST', 'http://exportapihost')
+    def test_get_export_product_exception(self, mock_requests):
+        mock_requests.get.return_value.raise_for_status.side_effect = requests.ConnectionError
+
+        with self.assertRaisesRegex(GOBException, "Fetching export products from GOB-Export failed"):
+            _get_export_products('some cat')
 
     @patch('gobdistribute.distribute.get_full_container_list')
     def test_expand_filename_wildcard(self, mock_get_list):
@@ -151,9 +169,8 @@ class TestDistribute(TestCase):
         mock_get_list.assert_called_with('CONNECTION', 'CONTAINER')
 
     @patch('gobdistribute.distribute._expand_filename_wildcard')
-    @patch('gobdistribute.distribute._get_export_products')
-    def test_get_filenames(self, mock_get_export_products, mock_expand_wildcard):
-        mock_get_export_products.return_value = {
+    def test_get_filenames(self, mock_expand_wildcard):
+        export_products = {
             'collection1': {
                 'product1': [
                     'file1.csv',
@@ -220,8 +237,7 @@ class TestDistribute(TestCase):
             ('catalog1/file3.dat', 'catalog1/file3.dat'),
             ('catalog1/file5.csv', 'catalog1/file5.csv'),
             ('catalog1/file6.shp', 'catalog1/file6.shp')
-        ], _get_filenames(conn_info, config, 'catalog1'))
-        mock_get_export_products.assert_called_with('catalog1')
+        ], _get_filenames(conn_info, config, 'catalog1', export_products))
         mock_expand_wildcard.assert_called_with(conn_info, 'some/dir/*.csv')
 
     @patch('gobdistribute.distribute.Path')
