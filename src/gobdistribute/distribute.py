@@ -7,9 +7,11 @@ import tempfile
 from gobconfig.datastore.config import get_datastore_config
 from gobcore.datastore.factory import Datastore, DatastoreFactory
 from gobcore.datastore.objectstore import ObjectDatastore, get_full_container_list, get_object
+from gobcore.exceptions import GOBException
 from gobcore.logging.logger import logger
 from pathlib import Path
 from typing import List, Tuple
+from requests.exceptions import ConnectionError
 
 from gobdistribute.config import CONTAINER_BASE, EXPORT_API_HOST, GOB_OBJECTSTORE
 from gobdistribute.utils import json_loads
@@ -89,7 +91,12 @@ def _get_export_products(catalogue: str):
     :return:
     """
     r = requests.get(f'{EXPORT_API_HOST}/products')
-    r.raise_for_status()
+    try:
+        r.raise_for_status()
+    except ConnectionError:
+        logger.error("Fetching export products from GOB-Export failed")
+        raise GOBException("Fetching export products from GOB-Export failed")
+
     data = json.loads(r.text)
     return data.get(catalogue)
 

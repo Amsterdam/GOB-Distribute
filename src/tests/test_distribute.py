@@ -3,6 +3,9 @@ import json
 from unittest import TestCase
 from unittest.mock import call, patch, MagicMock
 
+import requests.exceptions
+from gobcore.exceptions import GOBException
+
 from gobdistribute.distribute import distribute, _download_sources, _distribute_files, _get_file, _get_config, \
     ObjectDatastore, _get_filenames, _get_export_products, GOB_OBJECTSTORE, _get_datastore, \
     _apply_filename_replacements, _expand_filename_wildcard, _distribute_file
@@ -115,6 +118,14 @@ class TestDistribute(TestCase):
         self.assertEqual(resp['c'], _get_export_products('c'))
         mock_requests.get.assert_called_with('http://exportapihost/products')
         return_value.raise_for_status.assert_called_once()
+
+    @patch('gobdistribute.distribute.requests')
+    @patch('gobdistribute.distribute.EXPORT_API_HOST', 'http://exportapihost')
+    def test_get_export_product_exception(self, mock_requests):
+        mock_requests.get.return_value.raise_for_status.side_effect = requests.ConnectionError
+
+        with self.assertRaisesRegex(GOBException, "Fetching export products from GOB-Export failed"):
+            _get_export_products('some cat')
 
     @patch('gobdistribute.distribute.get_full_container_list')
     def test_expand_filename_wildcard(self, mock_get_list):
