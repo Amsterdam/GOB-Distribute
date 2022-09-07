@@ -25,20 +25,23 @@ RUN rm -rf /opt/wheelhouse
 # Copy gobdistribute module.
 COPY gobdistribute gobdistribute
 
+USER datapunt
 CMD ["python", "-m", "gobdistribute"]
 
 
 # Test.
 FROM application as test
+USER root
 
-# Remove gobcore/gobconfig tests (if present)
+# Remove gobcore/gobconfig tests (if present).
 RUN rm -rf /app/src/gobcore/tests
 RUN rm -rf /app/src/gobconfig/tests
 
-# Copy tests
+# Copy test module and tests.
+COPY .flake8 test.sh pytest.ini ./
 COPY tests tests
-COPY .flake8 .flake8
-COPY test.sh test.sh
 
-# Copy jenkins files
+# Copy Jenkins files.
 COPY .jenkins /.jenkins
+
+USER datapunt
