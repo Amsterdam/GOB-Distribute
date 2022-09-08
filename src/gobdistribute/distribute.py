@@ -2,16 +2,18 @@ import json
 import logging
 import os
 import re
-import requests
 import tempfile
+from pathlib import Path
+from typing import List, Tuple
+from io import TextIOWrapper
+
+import requests
+from requests.exceptions import ConnectionError
 from gobconfig.datastore.config import get_datastore_config
 from gobcore.datastore.factory import Datastore, DatastoreFactory
 from gobcore.datastore.objectstore import ObjectDatastore, get_full_container_list, get_object
 from gobcore.exceptions import GOBException
 from gobcore.logging.logger import logger
-from pathlib import Path
-from typing import List, Tuple
-from requests.exceptions import ConnectionError
 
 from gobdistribute.config import CONTAINER_BASE, EXPORT_API_HOST, GOB_OBJECTSTORE
 from gobdistribute.utils import json_loads
@@ -314,11 +316,12 @@ def _get_config(conn_info, catalogue: str, environment: str):
     """
     filename = f"distribute.{environment}.{catalogue}.json"
     _, config_file = _get_file(conn_info, filename)
-    if config_file is None:
+    try:
+        with TextIOWrapper(config_file, encoding='utf-8') as buffer:
+            return json_loads("".join(buffer))
+    except (AttributeError, TypeError):
         logger.error(f"Missing config file: {filename}")
         return {}
-    try:
-        return json_loads(config_file.decode("utf-8"))
     except json.JSONDecodeError as e:
         logger.error(f"JSON error in checks file '{filename}': {str(e)}")
         return {}
