@@ -367,7 +367,8 @@ class TestDistribute(TestCase):
         obj_info, obj = _get_file(conn_info, filename)
         self.assertEqual(obj_info, {'name': filename})
         self.assertEqual(obj, "get object")
-        mock_get_object.assert_called_with('any connection', {'name': filename}, 'any container')
+        mock_get_object.assert_called_with(
+            'any connection', {'name': filename}, 'any container', chunk_size=None)
 
         filename = "20201201yz"
         mock_get_full_container_list.return_value = iter([
