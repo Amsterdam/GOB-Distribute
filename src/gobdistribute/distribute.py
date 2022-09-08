@@ -5,7 +5,6 @@ import re
 import tempfile
 from pathlib import Path
 from typing import List, Tuple
-from io import TextIOWrapper
 
 import requests
 from requests.exceptions import ConnectionError
@@ -317,8 +316,7 @@ def _get_config(conn_info, catalogue: str, environment: str):
     filename = f"distribute.{environment}.{catalogue}.json"
     _, config_file = _get_file(conn_info, filename)
     try:
-        with TextIOWrapper(config_file, encoding='utf-8') as buffer:
-            return json_loads("".join(buffer))
+        return json_loads(config_file.decode("utf-8"))
     except (AttributeError, TypeError):
         logger.error(f"Missing config file: {filename}")
         return {}
