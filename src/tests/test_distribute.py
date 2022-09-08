@@ -1,4 +1,5 @@
 import json
+from io import BytesIO
 
 from unittest import TestCase
 from unittest.mock import call, patch, MagicMock
@@ -394,10 +395,10 @@ class TestDistribute(TestCase):
 
         mock_get_file.assert_called_with(conn_info, "distribute.any container.any catalogue.json")
 
-        mock_get_file.return_value = None, b"1234"
+        mock_get_file.return_value = None, BytesIO(b"1234")
         result = _get_config(conn_info, catalogue, environment)
         self.assertEqual(result, 1234)
 
-        mock_get_file.return_value = None, b"abc123"
+        mock_get_file.return_value = None, BytesIO(b"abc123")
         result = _get_config(conn_info, catalogue, environment)
         self.assertEqual(result, {})
