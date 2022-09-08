@@ -300,7 +300,7 @@ def _get_file(conn_info, filename):
         if item_name == filename and (obj_info is None or item['last_modified'] > obj_info['last_modified']):
             # If multiple matches, match with the most recent item
             obj_info = dict(item)
-            obj = get_object(conn_info['connection'], item, conn_info['container'])
+            obj = get_object(conn_info['connection'], item, conn_info['container'], chunk_size=None)
 
     return obj_info, obj
 
