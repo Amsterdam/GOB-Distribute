@@ -4,7 +4,7 @@ import os
 import re
 import tempfile
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Iterator
 
 import requests
 from requests.exceptions import ConnectionError
@@ -199,7 +199,9 @@ def _download_sources(conn_info, directory, filenames) -> List[Tuple[str, str]]:
         path.mkdir(exist_ok=True, parents=True)
 
         with open(temp_file, "wb") as f:
-            f.write(src_file)
+            for chunk in src_file:
+                f.write(chunk)
+
         src_files.append((dst_path, temp_file))
 
     logger.info(f"{len(src_files)} source files downloaded")
@@ -280,7 +282,7 @@ def _distribute_file(datastore: Datastore, local_file: str, destination_filename
         datastore.put_file(local_file, destination_filename)
 
 
-def _get_file(conn_info, filename):
+def _get_file(conn_info, filename) -> tuple[dict[str, str], Iterator[bytes]]:
     """
     Get a file from Objectstore
     Applies filename replacements, to find files with variables (such as timestamps) in their names.
@@ -299,7 +301,7 @@ def _get_file(conn_info, filename):
         if item_name == filename and (obj_info is None or item['last_modified'] > obj_info['last_modified']):
             # If multiple matches, match with the most recent item
             obj_info = dict(item)
-            obj = get_object(conn_info['connection'], item, conn_info['container'], chunk_size=None)
+            obj = get_object(conn_info['connection'], item, conn_info['container'])
 
     return obj_info, obj
 
@@ -316,7 +318,7 @@ def _get_config(conn_info, catalogue: str, environment: str):
     filename = f"distribute.{environment}.{catalogue}.json"
     _, config_file = _get_file(conn_info, filename)
     try:
-        return json_loads(config_file.decode("utf-8"))
+        return json_loads(b"".join(config_file).decode("utf-8"))
     except (AttributeError, TypeError):
         logger.error(f"Missing config file: {filename}")
         return {}
