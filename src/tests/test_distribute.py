@@ -368,7 +368,7 @@ class TestDistribute(TestCase):
         self.assertEqual(obj_info, {'name': filename})
         self.assertEqual(obj, "get object")
         mock_get_object.assert_called_with(
-            'any connection', {'name': filename}, 'any container', chunk_size=None)
+            'any connection', {'name': filename}, 'any container')
 
         filename = "20201201yz"
         mock_get_full_container_list.return_value = iter([
@@ -395,10 +395,10 @@ class TestDistribute(TestCase):
 
         mock_get_file.assert_called_with(conn_info, "distribute.any container.any catalogue.json")
 
-        mock_get_file.return_value = None, b"1234"
+        mock_get_file.return_value = None, [b"1234"]
         result = _get_config(conn_info, catalogue, environment)
         self.assertEqual(result, 1234)
 
-        mock_get_file.return_value = None, b"abc123"
+        mock_get_file.return_value = None, [b"abc123"]
         result = _get_config(conn_info, catalogue, environment)
         self.assertEqual(result, {})
