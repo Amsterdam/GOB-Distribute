@@ -3,7 +3,6 @@ from unittest import mock, TestCase
 from gobdistribute import __main__
 
 
-@mock.patch('gobdistribute.__main__.logger', mock.MagicMock())
 class TestMain(TestCase):
 
     @mock.patch("gobdistribute.__main__.messagedriven_service")
@@ -14,8 +13,9 @@ class TestMain(TestCase):
             __main__.init()
             mocked_messagedriven_service.assert_called_with(__main__.SERVICEDEFINITION, "Distribute")
 
+    @mock.patch("gobdistribute.__main__.logger")
     @mock.patch('gobdistribute.__main__.distribute')
-    def test_handle_distribute_msg(self, mock_distribute):
+    def test_handle_distribute_msg(self, mock_distribute, mock_logger):
 
         msg = {
             "header": {
@@ -26,11 +26,14 @@ class TestMain(TestCase):
         }
 
         __main__.handle_distribute_msg(msg)
-        
+
+        mock_logger.add_message_broker_handler.assert_called_once()
+
         mock_distribute.assert_called_with(
             catalogue="catalogue",
             fileset="fileset")
 
+    @mock.patch('gobdistribute.__main__.logger', mock.MagicMock())
     @mock.patch("gobdistribute.__main__.get_notification")
     @mock.patch("gobdistribute.__main__.start_workflow")
     def test_distribute_on_export_test(self, mock_start_workflow, mock_get_notification):
