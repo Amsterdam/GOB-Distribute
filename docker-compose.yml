@@ -19,6 +19,10 @@ services:
       - ${GOB_CORE_DIR-../GOB-Core}:/app/GOB-Core
       - ${GOB_CONFIG_DIR-../GOB-Config}:/app/GOB-Config
 
+volumes:
+  gob-volume:
+    external: true
+
 networks:
   default:
     external: true
