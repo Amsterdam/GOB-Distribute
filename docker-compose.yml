@@ -3,13 +3,21 @@ version: '3.7'
 services:
 
   gobdistribute:
-    build: src
+    build:
+      context: src
+      target: development
     container_name: gobdistribute
     environment:
       MESSAGE_BROKER_ADDRESS: rabbitmq
       API_HOST: http://gobapi:8001
       EXPORT_API_HOST: http://gobexport:8001
     env_file: .env
+    volumes:
+      - gob-volume:/app/shared
+      - ./src/gobdistribute:/app/gobdistribute
+      - ./src/tests:/app/tests
+      - ${GOB_CORE_DIR-../GOB-Core}:/app/GOB-Core
+      - ${GOB_CONFIG_DIR-../GOB-Config}:/app/GOB-Config
 
 networks:
   default:
