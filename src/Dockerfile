@@ -28,6 +28,17 @@ COPY gobdistribute gobdistribute
 USER datapunt
 CMD ["python", "-m", "gobdistribute"]
 
+# Development.
+FROM application as development
+USER root
+# Install GOB-Core and GOB-Config in development mode. Will be overridden with
+# mounts from the developer filesystem. Changes made to GOB-Core and GOB-Config
+# will be available immediately.
+RUN rm -rf GOB-Core && git clone --depth=1 --branch master https://github.com/Amsterdam/GOB-Core.git
+RUN LIBGDAL_VERSION=$(gdal-config --version) pip install -e /app/GOB-Core
+RUN git clone --depth=1 https://github.com/Amsterdam/GOB-Config.git
+RUN pip install -e /app/GOB-Config
+USER datapunt
 
 # Test.
 FROM application as test
