@@ -14,8 +14,9 @@ class TestMain(TestCase):
             __main__.init()
             mocked_messagedriven_service.assert_called_with(__main__.SERVICEDEFINITION, "Distribute")
 
+    @mock.patch("gobdistribute.__main__.logger")
     @mock.patch('gobdistribute.__main__.distribute')
-    def test_handle_distribute_msg(self, mock_distribute):
+    def test_handle_distribute_msg(self, mock_distribute, mock_logger):
 
         msg = {
             "header": {
@@ -26,7 +27,11 @@ class TestMain(TestCase):
         }
 
         __main__.handle_distribute_msg(msg)
-        
+
+        print(mock_logger.calls)
+
+        mock_logger.add_message_broker_handler.assert_called_once()
+
         mock_distribute.assert_called_with(
             catalogue="catalogue",
             fileset="fileset")
