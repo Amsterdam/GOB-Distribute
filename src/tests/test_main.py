@@ -27,8 +27,6 @@ class TestMain(TestCase):
 
         __main__.handle_distribute_msg(msg)
 
-        mock_logger.add_message_broker_handler.assert_called_once()
-
         mock_distribute.assert_called_with(
             catalogue="catalogue",
             fileset="fileset")
