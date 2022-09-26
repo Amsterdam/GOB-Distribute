@@ -9,8 +9,6 @@ from gobdistribute.distribute import distribute
 
 def handle_distribute_msg(msg):
     header = msg['header']
-    logger.configure(msg, "DISTRIBUTE")
-    logger.add_message_broker_handler()
 
     distribute(catalogue=header['catalogue'], fileset=header.get('fileset'))
 
