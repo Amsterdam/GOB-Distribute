@@ -6,7 +6,6 @@ import tempfile
 from pathlib import Path
 from typing import List, Tuple, Iterator
 
-import requests
 from requests.exceptions import ConnectionError
 from gobconfig.datastore.config import get_datastore_config
 from gobcore.datastore.factory import Datastore, DatastoreFactory
@@ -15,7 +14,7 @@ from gobcore.exceptions import GOBException
 from gobcore.logging.logger import logger
 
 from gobdistribute.config import CONTAINER_BASE, EXPORT_API_HOST, GOB_OBJECTSTORE
-from gobdistribute.utils import json_loads
+from gobdistribute.utils import json_loads, get_with_retries
 
 # Allow for variables in filenames. A variable will be converted into a regular expression
 # and vice versa for a generated proposal
@@ -91,7 +90,7 @@ def _get_export_products(catalogue: str):
 
     :return:
     """
-    r = requests.get(f'{EXPORT_API_HOST}/products')
+    r = get_with_retries(f'{EXPORT_API_HOST}/products')
     try:
         r.raise_for_status()
     except ConnectionError:
