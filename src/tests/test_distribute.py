@@ -106,23 +106,23 @@ class TestDistribute(TestCase):
         mock_get_export_products.assert_called_with(catalogue)
         mock_get_export_products.assert_called_once()
 
-    @patch('gobdistribute.distribute.requests')
+    @patch('gobdistribute.distribute.get_with_retries')
     @patch('gobdistribute.distribute.EXPORT_API_HOST', 'http://exportapihost')
-    def test_get_export_products(self, mock_requests):
+    def test_get_export_products(self, mock_get):
         resp = {'a': 'b', 'c': {'d': 'e'}}
         return_value = MagicMock()
         return_value.text = json.dumps(resp)
 
-        mock_requests.get.return_value = return_value
+        mock_get.return_value = return_value
 
         self.assertEqual(resp['c'], _get_export_products('c'))
-        mock_requests.get.assert_called_with('http://exportapihost/products')
+        mock_get.assert_called_with('http://exportapihost/products')
         return_value.raise_for_status.assert_called_once()
 
-    @patch('gobdistribute.distribute.requests')
+    @patch('gobdistribute.distribute.get_with_retries')
     @patch('gobdistribute.distribute.EXPORT_API_HOST', 'http://exportapihost')
-    def test_get_export_product_exception(self, mock_requests):
-        mock_requests.get.return_value.raise_for_status.side_effect = requests.ConnectionError
+    def test_get_export_products_exception(self, mock_get):
+        mock_get.return_value.raise_for_status.side_effect = requests.ConnectionError
 
         with self.assertRaisesRegex(GOBException, "Fetching export products from GOB-Export failed"):
             _get_export_products('some cat')

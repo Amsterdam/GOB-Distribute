@@ -10,7 +10,7 @@ services:
     environment:
       MESSAGE_BROKER_ADDRESS: rabbitmq
       API_HOST: http://gobapi:8001
-      EXPORT_API_HOST: http://gobexport:8001
+      EXPORT_API_HOST: http://gobexport:8000
     env_file: .env
     volumes:
       - gob-volume:/app/shared
